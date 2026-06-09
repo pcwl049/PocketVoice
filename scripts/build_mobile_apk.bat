@@ -49,7 +49,7 @@ echo  Resources...
 %BUILD_TOOLS%\aapt2 compile --dir "%PROJECT_DIR%\src\main\res" -o "%BUILD_DIR%" >nul
 if errorlevel 1 goto :error
 set "COMPILED_RES="
-for %%F in ("%BUILD_DIR%\values_*.arsc.flat") do set "COMPILED_RES=!COMPILED_RES! "%%~fF""
+for %%F in ("%BUILD_DIR%\*.flat") do set "COMPILED_RES=!COMPILED_RES! "%%~fF""
 %BUILD_TOOLS%\aapt2 link -I "%PLATFORM%\android.jar" !COMPILED_RES! ^
     --manifest "%PROJECT_DIR%\src\main\AndroidManifest.xml" -o "%BUILD_DIR%\resources.ap_" --auto-add-overlay >nul
 if errorlevel 1 goto :error

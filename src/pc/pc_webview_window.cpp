@@ -1,5 +1,6 @@
 #include "pc_webview_window.h"
 #include "pc_logger.h"
+#include "resource.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -85,6 +86,8 @@ static bool registerWindowClass(HINSTANCE instance) {
     wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = webViewWndProc;
     wc.hInstance = instance;
+    wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    wc.hIconSm = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     wc.lpszClassName = kWindowClassName;

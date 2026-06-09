@@ -62,7 +62,7 @@ assert(
     buildScript.includes("lib/arm64-v8a/libmodel.so") &&
     buildScript.includes("assets/ui/index.html") &&
     buildScript.includes("SttForegroundService.java") &&
-    buildScript.includes("values_*.arsc.flat") &&
+    buildScript.includes("*.flat") &&
     buildScript.includes("libc++_shared.so") &&
     buildScript.includes("STT_SKIP_QNN_LIBMODEL_REPAIR"),
   "APK build script should support --qnn and package QNN runtime/model libraries",

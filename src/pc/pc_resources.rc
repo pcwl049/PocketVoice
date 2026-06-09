@@ -1,3 +1,4 @@
 #include "resource.h"
 
+IDI_APP_ICON ICON "assets\\pocketvoice.ico"
 IDR_SILERO_VAD_ONNX STT_SILERO_VAD_ONNX "models\\silero_vad.onnx"
