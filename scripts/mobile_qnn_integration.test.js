@@ -32,6 +32,8 @@ const mainActivity = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/java/com/stt/mobile/MainActivity.java"),
   "utf8",
 );
+const foregroundServicePath = path.join(root, "src/mobile/app/src/main/java/com/stt/mobile/SttForegroundService.java");
+const foregroundService = fs.existsSync(foregroundServicePath) ? fs.readFileSync(foregroundServicePath, "utf8") : "";
 const manifest = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/AndroidManifest.xml"),
   "utf8",
@@ -59,6 +61,7 @@ assert(
     buildScript.includes("models\\sensevoice\\libmodel.so") &&
     buildScript.includes("lib/arm64-v8a/libmodel.so") &&
     buildScript.includes("assets/ui/index.html") &&
+    buildScript.includes("SttForegroundService.java") &&
     buildScript.includes("values_*.arsc.flat") &&
     buildScript.includes("libc++_shared.so") &&
     buildScript.includes("STT_SKIP_QNN_LIBMODEL_REPAIR"),
@@ -99,8 +102,37 @@ assert(
     mainActivity.includes("setVerticalScrollBarEnabled(false)") &&
     mainActivity.includes("MATCH_PARENT") &&
     mainActivity.includes("setUseWideViewPort(false)") &&
+    mainActivity.includes("setSupportZoom(false)") &&
+    mainActivity.includes("setBuiltInZoomControls(false)") &&
+    mainActivity.includes("setDisplayZoomControls(false)") &&
     mainActivity.includes("getSnapshot"),
-  "MainActivity should load the local WebView UI and expose the STT JavaScript bridge",
+  "MainActivity should load the local WebView UI, prevent page zoom, and expose the STT JavaScript bridge",
+);
+assert(
+  mainActivity.includes("Manifest.permission.POST_NOTIFICATIONS") &&
+    mainActivity.includes("requestPermissions") &&
+    mainActivity.includes("SttForegroundService.start") &&
+    mainActivity.includes("SttForegroundService.stop") &&
+    mainActivity.includes("SttForegroundService.isRunning") &&
+    mainActivity.includes("started = SttForegroundService.isRunning()") &&
+    !mainActivity.includes("if (started) SttForegroundService.stop(this)") &&
+    !mainActivity.includes("if (started) nativeStop()"),
+  "MainActivity should request notification permission and delegate long-running STT work to the foreground service without stopping it on Activity destruction",
+);
+assert(
+  fs.existsSync(foregroundServicePath) &&
+    foregroundService.includes("extends Service") &&
+    foregroundService.includes("startForeground") &&
+    foregroundService.includes("FOREGROUND_SERVICE_TYPE_DATA_SYNC") &&
+    foregroundService.includes("NotificationChannel") &&
+    foregroundService.includes("PowerManager.PARTIAL_WAKE_LOCK") &&
+    foregroundService.includes("setReferenceCounted(false)") &&
+    foregroundService.includes("wakeLock.release()") &&
+    foregroundService.includes("START_STICKY") &&
+    foregroundService.includes("MainActivity.nativeInit") &&
+    foregroundService.includes("MainActivity.nativeStart") &&
+    foregroundService.includes("MainActivity.nativeStop"),
+  "SttForegroundService should keep the native STT server alive with a foreground notification and partial wake lock",
 );
 assert(
   mainActivity.includes("lastLoggedStatus") &&
@@ -119,6 +151,12 @@ assert(
     manifest.includes('android:versionCode="1"') &&
     manifest.includes('android:minSdkVersion="24"') &&
     manifest.includes('android:targetSdkVersion="34"') &&
+    manifest.includes('android.permission.FOREGROUND_SERVICE') &&
+    manifest.includes('android.permission.FOREGROUND_SERVICE_DATA_SYNC') &&
+    manifest.includes('android.permission.POST_NOTIFICATIONS') &&
+    manifest.includes('android.permission.WAKE_LOCK') &&
+    manifest.includes('android:name=".SttForegroundService"') &&
+    manifest.includes('android:foregroundServiceType="dataSync"') &&
     androidStyles.includes("windowNoTitle") &&
     androidStyles.includes("windowFullscreen") &&
     androidStyles.includes("NoActionBar"),
@@ -133,9 +171,11 @@ const uiApp = fs.existsSync(uiAppPath) ? fs.readFileSync(uiAppPath, "utf8") : ""
 assert(
   uiIndex.includes("VRChat ChatBox STT") &&
     uiIndex.includes("Voice Bridge") &&
+    uiIndex.includes("user-scalable=no") &&
+    uiIndex.includes("maximum-scale=1") &&
     uiIndex.includes("styles.css") &&
     uiIndex.includes("app.js"),
-  "WebView HTML should use the approved Voice Bridge copy and load local CSS/JS",
+  "WebView HTML should use the approved Voice Bridge copy, prevent viewport zoom, and load local CSS/JS",
 );
 assert(
   uiStyles.includes("prefers-reduced-motion") &&

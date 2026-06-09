@@ -1,10 +1,12 @@
 package com.stt.mobile;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
@@ -32,6 +34,7 @@ public class MainActivity extends Activity {
     private static final int PORT = 27000;
     private static final int MAX_LOG_ROWS = 200;
     private static final int APP_BACKGROUND = Color.rgb(18, 19, 19);
+    private static final int REQUEST_POST_NOTIFICATIONS = 1001;
 
     private final Handler handler = new Handler();
     private final Object logLock = new Object();
@@ -77,6 +80,9 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(false);
         settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
         webView.addJavascriptInterface(new SttBridge(), "STT");
         setContentView(webView);
 
@@ -84,6 +90,7 @@ public class MainActivity extends Activity {
         addLog("Ready");
 
         webView.loadUrl("file:///android_asset/ui/index.html");
+        requestNotificationPermissionIfNeeded();
         handler.postDelayed(statusChecker, 1000);
         maybeAutoStart(getIntent());
     }
@@ -98,6 +105,12 @@ public class MainActivity extends Activity {
         if (intent != null && intent.getBooleanExtra("autoStart", false)) {
             handler.postDelayed(() -> startServer(), 500);
         }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;
+        requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_POST_NOTIFICATIONS);
     }
 
     private void configureSystemBars() {
@@ -291,7 +304,7 @@ public class MainActivity extends Activity {
                     lastLoggedStatus = status;
                 }
                 if (status.startsWith("error:") || status.equals("stopped")) {
-                    started = false;
+                    started = SttForegroundService.isRunning();
                     if (status.startsWith("error:")) {
                         lastError = status.substring("error:".length()).trim();
                     }
@@ -304,7 +317,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         handler.removeCallbacks(statusChecker);
-        if (started) nativeStop();
         if (webView != null) {
             webView.destroy();
         }
@@ -317,8 +329,7 @@ public class MainActivity extends Activity {
         qnnRuntimeDir = prepareQnnRuntimeDir();
         addLog("Starting server on port 27000...");
         addLog("Model: " + modelDir);
-        nativeInit(modelDir, qnnRuntimeDir);
-        nativeStart();
+        SttForegroundService.start(this, modelDir, qnnRuntimeDir);
         started = true;
         lastLoggedStatus = "";
         lastError = "";
@@ -329,7 +340,7 @@ public class MainActivity extends Activity {
         stopping = true;
         addLog("Stopping server...");
         Thread stopThread = new Thread(() -> {
-            nativeStop();
+            SttForegroundService.stop(this);
             handler.post(() -> {
                 started = false;
                 stopping = false;
@@ -377,9 +388,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static native boolean nativeInit(String modelDir, String nativeLibraryDir);
-    private static native void nativeStart();
-    private static native void nativeStop();
-    private static native String nativeGetStatus();
-    private static native String nativeGetRuntimeSnapshot();
+    static native boolean nativeInit(String modelDir, String nativeLibraryDir);
+    static native void nativeStart();
+    static native void nativeStop();
+    static native String nativeGetStatus();
+    static native String nativeGetRuntimeSnapshot();
 }

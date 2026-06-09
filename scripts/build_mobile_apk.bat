@@ -55,7 +55,7 @@ for %%F in ("%BUILD_DIR%\values_*.arsc.flat") do set "COMPILED_RES=!COMPILED_RES
 if errorlevel 1 goto :error
 
 echo  Java...
-javac --release 17 -d "%BUILD_DIR%\obj" -cp "%PLATFORM%\android.jar" "%PROJECT_DIR%\src\main\java\com\stt\mobile\MainActivity.java" >nul
+javac --release 17 -d "%BUILD_DIR%\obj" -cp "%PLATFORM%\android.jar" "%PROJECT_DIR%\src\main\java\com\stt\mobile\MainActivity.java" "%PROJECT_DIR%\src\main\java\com\stt\mobile\SttForegroundService.java" >nul
 if errorlevel 1 goto :error
 
 echo  DEX...
