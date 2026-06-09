@@ -15,6 +15,7 @@ int main() {
     runtime.incrementSentAudioCount();
     runtime.setLastText("hello", "NEUTRAL");
     runtime.setLastError("boom");
+    runtime.setRecentLogs({{1234, stt::PcLogLevel::Warning, "Network", "retry"}});
 
     stt::ChatBoxQueueSnapshot queue;
     queue.pending_count = 2;
@@ -34,6 +35,10 @@ int main() {
     assert(snapshot.last_text == "hello");
     assert(snapshot.last_emotion == "NEUTRAL");
     assert(snapshot.last_error == "boom");
+    assert(snapshot.recent_logs.size() == 1);
+    assert(snapshot.recent_logs[0].level == stt::PcLogLevel::Warning);
+    assert(snapshot.recent_logs[0].category == "Network");
+    assert(snapshot.recent_logs[0].message == "retry");
     assert(snapshot.chatbox.pending_count == 2);
     assert(snapshot.chatbox.sent_count == 1);
     assert(snapshot.chatbox.last_sent_text == "hello");

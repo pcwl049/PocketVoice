@@ -4,9 +4,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <future>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace stt {
 
@@ -25,6 +28,7 @@ public:
 private:
     void serveLoop();
     void handleClient(uintptr_t clientSocket);
+    void pruneCompletedClientTasks();
     std::string buildResponse(const std::string& method, const std::string& path, const std::string& body) const;
 
     PcRuntime& m_runtime;
@@ -33,6 +37,8 @@ private:
     int m_port = 8766;
     std::atomic<bool> m_running{false};
     std::thread m_thread;
+    std::mutex m_clientTasksMutex;
+    std::vector<std::future<void>> m_clientTasks;
     uintptr_t m_serverSocket = static_cast<uintptr_t>(~0ull);
 };
 

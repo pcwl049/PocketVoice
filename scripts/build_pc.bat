@@ -16,17 +16,31 @@ set "VS_DIR=D:\Program Files\VScode"
 set "MSVC_VER=14.50.35717"
 set "WIN_SDK=C:\Program Files (x86)\Windows Kits\10"
 set "WIN_SDK_VER=10.0.26100.0"
+set "WEBVIEW2_PACKAGES=%USERPROFILE%\.nuget\packages\microsoft.web.webview2"
 
 set "CL_PATH=%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\bin\Hostx64\x64\cl.exe"
 set "LINK_PATH=%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\bin\Hostx64\x64\link.exe"
 set "RC_PATH=%WIN_SDK%\bin\%WIN_SDK_VER%\x64\rc.exe"
+set "WEBVIEW2_DIR="
+
+if exist "%WEBVIEW2_PACKAGES%" (
+  for /f "delims=" %%D in ('dir /b /ad /o-n "%WEBVIEW2_PACKAGES%"') do (
+    if not defined WEBVIEW2_DIR set "WEBVIEW2_DIR=%WEBVIEW2_PACKAGES%\%%D"
+  )
+)
+
+if not defined WEBVIEW2_DIR (
+  echo [Error] Microsoft.Web.WebView2 NuGet package was not found.
+  echo   Run: dotnet add build\webview2-sdk-probe package Microsoft.Web.WebView2
+  goto :error
+)
 
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 if not exist "%BUILD_DIR%\obj" mkdir "%BUILD_DIR%\obj"
 
-set "INCLUDE=%SHERPA_DIR%\include;%SHERPA_DIR%\include\sherpa-onnx\c-api;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\include;%WIN_SDK%\Include\%WIN_SDK_VER%\ucrt;%WIN_SDK%\Include\%WIN_SDK_VER%\um;%WIN_SDK%\Include\%WIN_SDK_VER%\shared"
+set "INCLUDE=%WEBVIEW2_DIR%\build\native\include;%SHERPA_DIR%\include;%SHERPA_DIR%\include\sherpa-onnx\c-api;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\include;%WIN_SDK%\Include\%WIN_SDK_VER%\ucrt;%WIN_SDK%\Include\%WIN_SDK_VER%\um;%WIN_SDK%\Include\%WIN_SDK_VER%\shared;%WIN_SDK%\Include\%WIN_SDK_VER%\winrt"
 
-set "LIB=%SHERPA_DIR%\lib;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\lib\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\ucrt\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\um\x64"
+set "LIB=%WEBVIEW2_DIR%\build\native\x64;%SHERPA_DIR%\lib;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\lib\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\ucrt\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\um\x64"
 
 set CXXFLAGS=/std:c++20 /EHsc /W3 /O2 /utf-8 /c
 
@@ -76,6 +90,10 @@ echo   - pc_runtime.cpp
 "%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\pc_runtime.cpp" /Fo"%BUILD_DIR%\obj\pc_runtime.obj"
 if errorlevel 1 goto :error
 
+echo   - pc_logger.cpp
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\pc_logger.cpp" /Fo"%BUILD_DIR%\obj\pc_logger.obj"
+if errorlevel 1 goto :error
+
 echo   - pc_status_json.cpp
 "%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\pc_status_json.cpp" /Fo"%BUILD_DIR%\obj\pc_status_json.obj"
 if errorlevel 1 goto :error
@@ -86,6 +104,14 @@ if errorlevel 1 goto :error
 
 echo   - status_http_server.cpp
 "%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\status_http_server.cpp" /Fo"%BUILD_DIR%\obj\status_http_server.obj"
+if errorlevel 1 goto :error
+
+echo   - adb_bridge.cpp
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\adb_bridge.cpp" /Fo"%BUILD_DIR%\obj\adb_bridge.obj"
+if errorlevel 1 goto :error
+
+echo   - pc_webview_window.cpp
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\pc_webview_window.cpp" /Fo"%BUILD_DIR%\obj\pc_webview_window.obj"
 if errorlevel 1 goto :error
 
 echo   - embedded_vad_model.cpp
@@ -102,7 +128,7 @@ if errorlevel 1 goto :error
 
 echo.
 echo [2/5] Linking...
-"%LINK_PATH%" "%BUILD_DIR%\obj\*.obj" "%BUILD_DIR%\obj\pc_resources.res" /LIBPATH:"%SHERPA_DIR%\lib" sherpa-onnx-c-api.lib onnxruntime.lib ws2_32.lib user32.lib ole32.lib avrt.lib mmdevapi.lib propsys.lib /OUT:"%BUILD_DIR%\stt_pc.exe"
+"%LINK_PATH%" "%BUILD_DIR%\obj\*.obj" "%BUILD_DIR%\obj\pc_resources.res" /LIBPATH:"%SHERPA_DIR%\lib" /LIBPATH:"%WEBVIEW2_DIR%\build\native\x64" sherpa-onnx-c-api.lib onnxruntime.lib WebView2LoaderStatic.lib version.lib advapi32.lib ws2_32.lib user32.lib ole32.lib avrt.lib mmdevapi.lib propsys.lib /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /OUT:"%BUILD_DIR%\stt_pc.exe"
 if errorlevel 1 goto :error
 
 echo.

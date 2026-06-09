@@ -20,6 +20,7 @@ set "LIB=%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\lib\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\u
   "%ROOT_DIR%\tests\pc\pc_status_json_test.cpp" ^
   "%ROOT_DIR%\src\pc\pc_status_json.cpp" ^
   "%ROOT_DIR%\src\pc\pc_runtime.cpp" ^
+  "%ROOT_DIR%\src\pc\pc_logger.cpp" ^
   /Fe"%BUILD_DIR%\pc_status_json_test.exe" >nul
 if errorlevel 1 exit /b 1
 

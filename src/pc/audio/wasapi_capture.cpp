@@ -4,6 +4,7 @@
 
 #include "wasapi_capture.h"
 
+#include "../pc_logger.h"
 #include "sample_converter.h"
 
 #include <audioclient.h>
@@ -13,7 +14,6 @@
 #include <propvarutil.h>
 #include <windows.h>
 
-#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
@@ -284,11 +284,13 @@ void WasapiCapture::run(SamplesCallback callback, Mode mode, std::string selecte
         const size_t sourceFrameBytes = bytesPerSample(sourceFormat.sample_type) * (size_t)sourceFormat.channels;
 
         std::string captureName = deviceFriendlyName(device);
-        std::printf("[Audio] WASAPI %s started: %s, %d Hz, %d channel(s)\n",
-                    mode == Mode::DefaultOutputLoopback ? "loopback" : "capture",
-                    captureName.empty() ? "default device" : captureName.c_str(),
-                    sourceFormat.sample_rate,
-                    sourceFormat.channels);
+        pcLogf(PcLogLevel::Info,
+               "Audio",
+               "WASAPI %s started: %s, %d Hz, %d channel(s)",
+               mode == Mode::DefaultOutputLoopback ? "loopback" : "capture",
+               captureName.empty() ? "default device" : captureName.c_str(),
+               sourceFormat.sample_rate,
+               sourceFormat.channels);
 
         hr = audioClient->Start();
         if (FAILED(hr)) {

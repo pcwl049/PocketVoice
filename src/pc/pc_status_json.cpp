@@ -45,6 +45,18 @@ std::string toStatusJson(const PcRuntimeSnapshot& snapshot) {
     out << "\"last_text\":\"" << jsonEscape(snapshot.last_text) << "\",";
     out << "\"last_emotion\":\"" << jsonEscape(snapshot.last_emotion) << "\",";
     out << "\"last_error\":\"" << jsonEscape(snapshot.last_error) << "\",";
+    out << "\"recent_logs\":[";
+    for (size_t i = 0; i < snapshot.recent_logs.size(); ++i) {
+        const auto& entry = snapshot.recent_logs[i];
+        if (i > 0) out << ",";
+        out << "{";
+        out << "\"timestamp_ms\":" << entry.timestamp_ms << ",";
+        out << "\"level\":\"" << jsonEscape(pcLogLevelText(entry.level)) << "\",";
+        out << "\"category\":\"" << jsonEscape(entry.category) << "\",";
+        out << "\"message\":\"" << jsonEscape(entry.message) << "\"";
+        out << "}";
+    }
+    out << "],";
     out << "\"audio_input\":{";
     out << "\"mode\":\"" << jsonEscape(snapshot.audio_input.mode) << "\",";
     out << "\"selected_device_id\":\"" << jsonEscape(snapshot.audio_input.selected_device_id) << "\",";

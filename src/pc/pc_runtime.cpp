@@ -65,6 +65,11 @@ void PcRuntime::clearLastError() {
     m_snapshot.last_error.clear();
 }
 
+void PcRuntime::setRecentLogs(std::vector<PcLogEntry> logs) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_snapshot.recent_logs = std::move(logs);
+}
+
 void PcRuntime::setAudioInputSnapshot(PcAudioInputSnapshot audioInput) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_snapshot.audio_input = std::move(audioInput);

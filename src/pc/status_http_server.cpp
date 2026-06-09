@@ -2,6 +2,7 @@
 
 #include "pc_status_page.h"
 #include "pc_status_json.h"
+#include "pc_logger.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -9,9 +10,11 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include <cstdio>
+#include <chrono>
 #include <cstdlib>
+#include <future>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -38,13 +41,13 @@ bool StatusHttpServer::start(const std::string& host, int port) {
 
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("[Status] WSAStartup failed\n");
+        pcLog(PcLogLevel::Error, "Status", "WSAStartup failed");
         return false;
     }
 
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == kInvalidSocket) {
-        printf("[Status] Failed to create socket\n");
+        pcLog(PcLogLevel::Error, "Status", "Failed to create socket");
         return false;
     }
 
@@ -57,13 +60,13 @@ bool StatusHttpServer::start(const std::string& host, int port) {
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
 
     if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
-        printf("[Status] Failed to bind %s:%d error=%d\n", host.c_str(), port, WSAGetLastError());
+        pcLogf(PcLogLevel::Error, "Status", "Failed to bind %s:%d error=%d", host.c_str(), port, WSAGetLastError());
         closesocket(sock);
         return false;
     }
 
     if (listen(sock, SOMAXCONN) == SOCKET_ERROR) {
-        printf("[Status] Failed to listen error=%d\n", WSAGetLastError());
+        pcLogf(PcLogLevel::Error, "Status", "Failed to listen error=%d", WSAGetLastError());
         closesocket(sock);
         return false;
     }
@@ -71,7 +74,7 @@ bool StatusHttpServer::start(const std::string& host, int port) {
     m_serverSocket = static_cast<uintptr_t>(sock);
     m_running = true;
     m_thread = std::thread(&StatusHttpServer::serveLoop, this);
-    printf("[Status] HTTP server listening at http://%s:%d\n", host.c_str(), port);
+    pcLogf(PcLogLevel::Info, "Status", "HTTP server listening at http://%s:%d", host.c_str(), port);
     return true;
 }
 
@@ -86,6 +89,16 @@ void StatusHttpServer::stop() {
     if (m_thread.joinable()) {
         m_thread.join();
     }
+    std::vector<std::future<void>> clientTasks;
+    {
+        std::lock_guard<std::mutex> lock(m_clientTasksMutex);
+        clientTasks.swap(m_clientTasks);
+    }
+    for (auto& task : clientTasks) {
+        if (task.valid()) {
+            task.wait();
+        }
+    }
 }
 
 bool StatusHttpServer::isRunning() const {
@@ -98,16 +111,35 @@ void StatusHttpServer::serveLoop() {
         SOCKET client = accept(sock, nullptr, nullptr);
         if (client == kInvalidSocket) {
             if (m_running) {
-                printf("[Status] accept failed error=%d\n", WSAGetLastError());
+                pcLogf(PcLogLevel::Warning, "Status", "accept failed error=%d", WSAGetLastError());
             }
             continue;
         }
-        handleClient(static_cast<uintptr_t>(client));
+        pruneCompletedClientTasks();
+        std::lock_guard<std::mutex> lock(m_clientTasksMutex);
+        m_clientTasks.emplace_back(std::async(std::launch::async, &StatusHttpServer::handleClient, this, static_cast<uintptr_t>(client)));
+    }
+}
+
+void StatusHttpServer::pruneCompletedClientTasks() {
+    using namespace std::chrono_literals;
+
+    std::lock_guard<std::mutex> lock(m_clientTasksMutex);
+    for (auto it = m_clientTasks.begin(); it != m_clientTasks.end();) {
+        if (it->valid() && it->wait_for(0ms) == std::future_status::ready) {
+            it->wait();
+            it = m_clientTasks.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
 
 void StatusHttpServer::handleClient(uintptr_t clientSocket) {
     SOCKET client = static_cast<SOCKET>(clientSocket);
+    DWORD timeoutMs = 3000;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+
     char request[8192] = {};
     int received = recv(client, request, sizeof(request) - 1, 0);
     if (received <= 0) {
@@ -178,6 +210,7 @@ std::string StatusHttpServer::buildResponse(const std::string& method, const std
     } else if (path == "/health") {
         body = "{\"ok\":true,\"app\":\"PocketVoice\"}";
     } else if (path == "/status") {
+        m_runtime.setRecentLogs(pcLogger().recentEntries());
         body = toStatusJson(m_runtime.snapshot());
     } else if (path == "/") {
         contentType = "text/html; charset=utf-8";

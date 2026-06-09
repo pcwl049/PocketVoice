@@ -159,7 +159,7 @@ function waitServer(adb, resultFile) {
   const intervalMs = 500;
   const attempts = Math.max(1, Math.ceil(timeoutMs / intervalMs));
   for (let i = 0; i < attempts; i += 1) {
-    const result = run(adb, ["logcat", "-d", "-s", "STT_Native"]);
+    const result = run(adb, ["logcat", "-d", "-s", "STT_Native", "STT_Network"]);
     if (result.stdout.includes("Server listening on port 27000")) {
       return true;
     }

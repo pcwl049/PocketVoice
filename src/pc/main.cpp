@@ -27,10 +27,15 @@
 #include "chatbox_queue.h"
 #include "pc_app_controller.h"
 #include "pc_runtime.h"
+#include "pc_logger.h"
 #include "status_http_server.h"
 #include "embedded_vad_model.h"
+#include "pc_webview_window.h"
+#include "adb_bridge.h"
 
 #pragma comment(lib, "ws2_32.lib")
+
+using stt::PcLogLevel;
 
 static std::atomic<bool> g_running(true);
 static std::mutex g_mutex;
@@ -51,6 +56,7 @@ static stt::ChatBoxFormatter g_chatboxFormatter;
 static stt::PcRuntime g_runtime;
 static stt::PcAppController g_controller(g_runtime);
 static stt::StatusHttpServer g_statusServer(g_runtime);
+static stt::PcWebViewWindow g_webViewWindow;
 
 static std::wstring g_currentText;
 static std::string g_currentEmotion;
@@ -97,9 +103,12 @@ static void chatBoxQueueLoop();
 static void printRuntimeSnapshot(const char* label);
 static void startStatusServer();
 static void stopStatusServer();
+static void startPcWebView(bool enabled);
+static void stopPcWebView();
 static std::string handleControlRequest(const std::string& path, const std::string& body);
 static std::string controlJson(bool ok, const std::string& action, const std::string& message);
 static bool reconnectPhone();
+static bool prepareAdbForward();
 static std::string resolveVadModelPath();
 static void refreshAudioInputSnapshot(const std::string& mode);
 static std::string selectedAudioDeviceName(const std::vector<stt::WasapiCapture::AudioInputDevice>& devices,
@@ -108,6 +117,7 @@ static bool setSelectedAudioDevice(const std::string& deviceId, bool requestRest
 static std::string extractControlValue(const std::string& path, const std::string& body, const std::string& key);
 static std::string urlDecode(const std::string& value);
 static int listAudioDevicesAndExit();
+static void enableDpiAwareness();
 
 static void clearVadPaddingSource() {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -128,7 +138,7 @@ static void startChatBoxQueue() {
             bool ok = g_oscSender.sendChatBox(text, true);
             if (ok) {
                 setColor(10);
-                printf("[ChatBox] %s\n", text.c_str());
+                stt::pcLog(PcLogLevel::Info, "ChatBox", text);
                 setColor(7);
             }
             return ok;
@@ -171,16 +181,18 @@ static void chatBoxQueueLoop() {
 
 static void printRuntimeSnapshot(const char* label) {
     auto snapshot = g_runtime.snapshot();
-    printf("[Runtime] %s running=%s phone=%s osc=%s typing=%s dry_run=%s sent_audio=%d queue_pending=%zu queue_sent=%zu\n",
-           label,
-           snapshot.running ? "true" : "false",
-           snapshot.phone_connected ? "true" : "false",
-           snapshot.osc_ready ? "true" : "false",
-           snapshot.typing_active ? "true" : "false",
-           snapshot.chatbox_dry_run ? "true" : "false",
-           snapshot.sent_audio_count,
-           snapshot.chatbox.pending_count,
-           snapshot.chatbox.sent_count);
+    stt::pcLogf(PcLogLevel::Info,
+                "Runtime",
+                "%s running=%s phone=%s osc=%s typing=%s dry_run=%s sent_audio=%d queue_pending=%zu queue_sent=%zu",
+                label,
+                snapshot.running ? "true" : "false",
+                snapshot.phone_connected ? "true" : "false",
+                snapshot.osc_ready ? "true" : "false",
+                snapshot.typing_active ? "true" : "false",
+                snapshot.chatbox_dry_run ? "true" : "false",
+                snapshot.sent_audio_count,
+                snapshot.chatbox.pending_count,
+                snapshot.chatbox.sent_count);
 }
 
 static void startStatusServer() {
@@ -193,6 +205,46 @@ static void startStatusServer() {
 
 static void stopStatusServer() {
     g_statusServer.stop();
+}
+
+static void enableDpiAwareness() {
+    HMODULE user32 = LoadLibraryW(L"user32.dll");
+    if (!user32) return;
+
+    using SetProcessDpiAwarenessContextFn = BOOL (WINAPI*)(DPI_AWARENESS_CONTEXT);
+    auto setContext = reinterpret_cast<SetProcessDpiAwarenessContextFn>(
+        GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
+    if (setContext && setContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+        FreeLibrary(user32);
+        return;
+    }
+
+    using SetProcessDPIAwareFn = BOOL (WINAPI*)();
+    auto setAware = reinterpret_cast<SetProcessDPIAwareFn>(
+        GetProcAddress(user32, "SetProcessDPIAware"));
+    if (setAware) {
+        setAware();
+    }
+    FreeLibrary(user32);
+}
+
+static void startPcWebView(bool enabled) {
+    if (!enabled) return;
+
+    const std::wstring url = L"http://127.0.0.1:8766/";
+    g_webViewWindow.setCloseCallback([] {
+        stt::pcLog(PcLogLevel::Info, "UI", "Window close requested");
+        g_running = false;
+        g_wasapiCapture.stop();
+    });
+    if (!g_webViewWindow.startDetached(url)) {
+        stt::pcLog(PcLogLevel::Error, "UI", "Failed to start WebView2 window");
+        g_runtime.setLastError("Failed to start WebView2 window");
+    }
+}
+
+static void stopPcWebView() {
+    g_webViewWindow.stop();
 }
 
 static std::string controlJson(bool ok, const std::string& action, const std::string& message) {
@@ -276,6 +328,7 @@ static void refreshAudioInputSnapshot(const std::string& mode) {
 static bool setSelectedAudioDevice(const std::string& deviceId, bool requestRestart) {
     if (g_audioLoopbackMode) {
         g_runtime.setLastError("Audio device selection is unavailable in loopback mode");
+        stt::pcLog(PcLogLevel::Warning, "Audio", "Audio device selection is unavailable in loopback mode");
         return false;
     }
 
@@ -289,6 +342,7 @@ static bool setSelectedAudioDevice(const std::string& deviceId, bool requestRest
     }
     if (!found) {
         g_runtime.setLastError("Audio input device not found");
+        stt::pcLog(PcLogLevel::Error, "Audio", "Audio input device not found");
         return false;
     }
 
@@ -297,6 +351,7 @@ static bool setSelectedAudioDevice(const std::string& deviceId, bool requestRest
         g_selectedAudioDeviceId = deviceId;
     }
     refreshAudioInputSnapshot("capture");
+    stt::pcLog(PcLogLevel::Info, "Audio", deviceId.empty() ? "Selected default audio input" : "Selected audio input device");
     if (requestRestart) {
         g_restartWasapiCapture = true;
     }
@@ -320,11 +375,13 @@ static int listAudioDevicesAndExit() {
 static std::string handleControlRequest(const std::string& path, const std::string& body) {
     const std::string basePath = path.substr(0, path.find('?'));
     if (basePath == "/control/listen/start") {
+        stt::pcLog(PcLogLevel::Info, "Control", "Listening started");
         return stt::toControlJson(g_controller.startListening());
     }
 
     if (basePath == "/control/listen/stop") {
         setTyping(false);
+        stt::pcLog(PcLogLevel::Info, "Control", "Listening stopped");
         return stt::toControlJson(g_controller.stopListening());
     }
 
@@ -343,6 +400,7 @@ static std::string handleControlRequest(const std::string& path, const std::stri
         if (!g_chatboxQueue) return controlJson(false, "queue.clear", "queue unavailable");
         g_chatboxQueue->clear();
         g_runtime.setChatBoxSnapshot(g_chatboxQueue->snapshot());
+        stt::pcLog(PcLogLevel::Info, "ChatBox", "Queue cleared");
         return controlJson(true, "queue.clear", "queue cleared");
     }
 
@@ -352,20 +410,24 @@ static std::string handleControlRequest(const std::string& path, const std::stri
         if (!g_chatboxQueue) return controlJson(false, paused ? "queue.pause" : "queue.resume", "queue unavailable");
         g_chatboxQueue->setPaused(paused);
         g_runtime.setChatBoxSnapshot(g_chatboxQueue->snapshot());
+        stt::pcLog(PcLogLevel::Info, "ChatBox", paused ? "Queue paused" : "Queue resumed");
         return controlJson(true, paused ? "queue.pause" : "queue.resume", paused ? "queue paused" : "queue resumed");
     }
 
     if (basePath == "/control/error/clear") {
         g_runtime.clearLastError();
+        stt::pcLog(PcLogLevel::Info, "Control", "Error cleared");
         return controlJson(true, "error.clear", "error cleared");
     }
 
     if (basePath == "/control/chatbox/clear") {
         if (!g_oscReady || g_chatboxDryRun) {
             g_runtime.setLastError("ChatBox clear unavailable");
+            stt::pcLog(PcLogLevel::Warning, "ChatBox", "ChatBox clear unavailable");
             return controlJson(false, "chatbox.clear", "chatbox clear unavailable");
         }
         g_oscSender.clearChatBox();
+        stt::pcLog(PcLogLevel::Info, "ChatBox", "ChatBox cleared");
         return controlJson(true, "chatbox.clear", "chatbox cleared");
     }
 
@@ -373,24 +435,42 @@ static std::string handleControlRequest(const std::string& path, const std::stri
 }
 
 static bool reconnectPhone() {
+    stt::pcLog(PcLogLevel::Info, "Network", "Reconnect requested");
+    prepareAdbForward();
     g_networkClient.disconnect();
     g_runtime.setPhoneConnected(false);
     bool ok = g_networkClient.connect(g_config.network.host, g_config.network.port);
     if (ok) {
         g_networkClient.setTextCallback(onTextReceived);
+        g_runtime.setPhoneConnected(true);
+        g_runtime.clearLastError();
+        stt::pcLog(PcLogLevel::Info, "Network", "Phone reconnected");
+    } else {
+        g_runtime.setPhoneConnected(false);
+        g_runtime.setLastError("Failed to connect to phone");
+        stt::pcLog(PcLogLevel::Error, "Network", "Phone reconnect failed");
     }
     return ok;
+}
+
+static bool prepareAdbForward() {
+    auto adb = stt::ensureAdbForward(g_config.network.port);
+    if (adb.ok) return true;
+    if (!adb.message.empty()) {
+        g_runtime.setLastError(adb.message);
+    }
+    return false;
 }
 
 static std::string resolveVadModelPath() {
     try {
         auto path = stt::embeddedSileroVadPath();
         if (!path.empty()) {
-            printf("[VAD] Using embedded model: %s\n", path.string().c_str());
+            stt::pcLogf(PcLogLevel::Info, "VAD", "Using embedded model: %s", path.string().c_str());
             return path.string();
         }
     } catch (const std::exception& e) {
-        printf("[VAD] Embedded model unavailable: %s\n", e.what());
+        stt::pcLogf(PcLogLevel::Warning, "VAD", "Embedded model unavailable: %s", e.what());
     }
     return g_config.vad.model;
 }
@@ -849,7 +929,7 @@ static bool runWasapiAudioInput(bool loopback) {
     const auto mode = loopback ? stt::WasapiCapture::Mode::DefaultOutputLoopback
                                : stt::WasapiCapture::Mode::DefaultInput;
     refreshAudioInputSnapshot(loopback ? "loopback" : "capture");
-    printf("[Audio] Starting Windows %s through WASAPI...\n", loopback ? "output loopback" : "input");
+    stt::pcLogf(PcLogLevel::Info, "Audio", "Starting Windows %s through WASAPI", loopback ? "output loopback" : "input");
 
     bool lastRunOk = true;
     while (g_running) {
@@ -861,6 +941,7 @@ static bool runWasapiAudioInput(bool loopback) {
 
         if (!g_wasapiCapture.start(processLiveSamples, mode, loopback ? "" : selectedId)) {
             g_runtime.setLastError("Failed to start WASAPI capture");
+            stt::pcLog(PcLogLevel::Error, "Audio", "Failed to start WASAPI capture");
             return false;
         }
 
@@ -868,7 +949,7 @@ static bool runWasapiAudioInput(bool loopback) {
         while (g_running && g_wasapiCapture.isRunning()) {
             Sleep(100);
             if (g_restartWasapiCapture.exchange(false)) {
-                printf("[Audio] Restarting WASAPI capture with selected input device\n");
+                stt::pcLog(PcLogLevel::Info, "Audio", "Restarting WASAPI capture with selected input device");
                 restartRequested = true;
                 g_wasapiCapture.stop();
                 break;
@@ -876,7 +957,7 @@ static bool runWasapiAudioInput(bool loopback) {
 
             auto error = g_wasapiCapture.lastError();
             if (!error.empty()) {
-                printf("[Audio] %s\n", error.c_str());
+                stt::pcLog(PcLogLevel::Error, "Audio", error);
                 g_runtime.setLastError(error);
                 lastRunOk = false;
                 g_wasapiCapture.stop();
@@ -896,18 +977,24 @@ static bool runWasapiAudioInput(bool loopback) {
 }
 
 int main(int argc, char* argv[]) {
+    enableDpiAwareness();
     SetConsoleOutputCP(65001);
     SetConsoleCP(65001);
     setvbuf(stdout, NULL, _IONBF, 0);  // unbuffered output for real-time console
+    stt::pcLogger().configureDefaultFileSink();
+    stt::pcLogf(PcLogLevel::Info, "Runtime", "PocketVoice PC starting; log=%s", stt::pcLogger().filePath().string().c_str());
     
     printHeader();
     
     g_config = stt::loadConfig("config.json");
     
-    printf("[Config] Loading configuration...\n");
-    printf("  VAD threshold: %.2f\n", g_config.vad.silence_threshold);
-    printf("  Merge window: %.2fs\n", g_config.merge.window);
-    printf("  Network: %s:%d\n", g_config.network.host.c_str(), g_config.network.port);
+    stt::pcLogf(PcLogLevel::Info,
+                "Config",
+                "Loaded configuration: vad_threshold=%.2f merge_window=%.2f network=%s:%d",
+                g_config.vad.silence_threshold,
+                g_config.merge.window,
+                g_config.network.host.c_str(),
+                g_config.network.port);
     printf("\n");
 
     for (int i = 1; i < argc; ++i) {
@@ -918,6 +1005,7 @@ int main(int argc, char* argv[]) {
     bool useSimulationInput = false;
     bool useAudioLoopback = false;
     bool listAudioDevices = false;
+    bool useWebView = true;
     std::string selectedAudioDeviceId;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -930,6 +1018,9 @@ int main(int argc, char* argv[]) {
         if (arg == "--list-audio-devices") {
             listAudioDevices = true;
         }
+        if (arg == "--no-webview") {
+            useWebView = false;
+        }
         if (arg == "--audio-device-id" && i + 1 < argc) {
             selectedAudioDeviceId = argv[++i];
         }
@@ -941,9 +1032,9 @@ int main(int argc, char* argv[]) {
 
     if (!selectedAudioDeviceId.empty()) {
         if (useAudioLoopback) {
-            printf("[Audio] --audio-device-id is ignored with --audio-loopback\n");
+            stt::pcLog(PcLogLevel::Warning, "Audio", "--audio-device-id is ignored with --audio-loopback");
         } else if (!setSelectedAudioDevice(selectedAudioDeviceId, false)) {
-            printf("[Audio] Selected device id was not found: %s\n", selectedAudioDeviceId.c_str());
+            stt::pcLogf(PcLogLevel::Error, "Audio", "Selected device id was not found: %s", selectedAudioDeviceId.c_str());
             return 1;
         }
     }
@@ -964,10 +1055,12 @@ int main(int argc, char* argv[]) {
         return runWavVadMode(argv[2], true);
     }
     startStatusServer();
+    startPcWebView(useWebView);
+    prepareAdbForward();
     
     std::string vadModelPath = resolveVadModelPath();
     if (!g_vad.init(vadModelPath, g_config.vad.silence_threshold)) {
-        printf("[Error] Failed to initialize VAD\n");
+        stt::pcLog(PcLogLevel::Error, "VAD", "Failed to initialize VAD");
         printf("  Model path: %s\n", vadModelPath.c_str());
         printf("  Please ensure the model file exists\n");
         return 1;
@@ -985,7 +1078,7 @@ int main(int argc, char* argv[]) {
     g_chatboxFormatter.setMaxChars((size_t)g_config.display.max_text_length);
 
     if (!g_oscSender.init(g_config.osc.send.ip, g_config.osc.send.port)) {
-        printf("[Warning] OSC sender initialization failed\n");
+        stt::pcLog(PcLogLevel::Warning, "OSC", "OSC sender initialization failed");
         g_oscReady = false;
     } else {
         g_oscReady = true;
@@ -993,32 +1086,17 @@ int main(int argc, char* argv[]) {
     g_runtime.setOscReady(g_oscReady);
     startChatBoxQueue();
     
-    printf("[Network] Connecting to phone...\n");
-    printf("  Make sure the phone app is running\n");
-    printf("  Run: adb forward tcp:%d tcp:%d\n", g_config.network.port, g_config.network.port);
-    printf("\n");
+    stt::pcLog(PcLogLevel::Info, "Network", "Connecting to phone");
     
     if (!g_networkClient.connect(g_config.network.host, g_config.network.port)) {
-        printf("[Error] Failed to connect to phone\n");
+        stt::pcLog(PcLogLevel::Error, "Network", "Failed to connect to phone");
         g_runtime.setPhoneConnected(false);
         g_runtime.setLastError("Failed to connect to phone");
-        printf("  Check USB connection and run:\n");
-        printf("  adb forward tcp:%d tcp:%d\n", g_config.network.port, g_config.network.port);
-        printf("\n  Make sure the phone app is running (press Start)\n");
-        printf("  Press Enter to retry, or Ctrl+C to quit...\n");
-        getchar();
-        printf("[Network] Retrying connection...\n");
-        if (!g_networkClient.connect(g_config.network.host, g_config.network.port)) {
-            printf("[Error] Still failed. Press Enter to exit...\n");
-            g_runtime.setPhoneConnected(false);
-            g_runtime.setLastError("Failed to connect to phone after retry");
-            stopChatBoxQueue();
-            stopStatusServer();
-            getchar();
-            return 1;
-        }
+        stt::pcLog(PcLogLevel::Info, "Network", "Keep this window open and use Reconnect Phone after the phone is ready.");
+    } else {
+        g_runtime.setPhoneConnected(true);
+        g_runtime.clearLastError();
     }
-    g_runtime.setPhoneConnected(true);
     
     g_networkClient.setTextCallback(onTextReceived);
     
@@ -1043,11 +1121,12 @@ int main(int argc, char* argv[]) {
         runWasapiAudioInput(useAudioLoopback);
     }
     
-    printf("\n[Shutdown] Stopping...\n");
+    stt::pcLog(PcLogLevel::Info, "Shutdown", "Stopping");
     
     g_vad.flush();
     setTyping(false);
     stopChatBoxQueue();
+    stopPcWebView();
     stopStatusServer();
     g_networkClient.disconnect();
     g_runtime.setPhoneConnected(false);
@@ -1057,7 +1136,7 @@ int main(int argc, char* argv[]) {
     printRuntimeSnapshot("shutdown");
     
     setColor(10);
-    printf("[Shutdown] Complete\n");
+    stt::pcLog(PcLogLevel::Info, "Shutdown", "Complete");
     setColor(7);
     
     return 0;

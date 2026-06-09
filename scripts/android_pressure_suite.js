@@ -404,7 +404,7 @@ function waitServer(adb, resultFile, expectedBackend, timeoutMs) {
   const intervalMs = 500;
   const attempts = Math.max(1, Math.ceil(timeoutMs / intervalMs));
   for (let i = 0; i < attempts; i += 1) {
-    const result = run(adb, ["logcat", "-d", "-s", "STT_Native", "STT_Engine", "sherpa-onnx"]);
+    const result = run(adb, ["logcat", "-d", "-s", "STT_Native", "STT_Engine", "STT_Network", "sherpa-onnx"]);
     const ready = result.stdout.includes("Server listening on port 27000");
     const backendReady = !expectedBackend || result.stdout.includes(`Recognizer backend: ${expectedBackend}`);
     if (ready && backendReady) {

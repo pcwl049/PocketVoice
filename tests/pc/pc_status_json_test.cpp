@@ -17,6 +17,8 @@ int main() {
     snapshot.last_text = "hello \"PocketVoice\"\nline";
     snapshot.last_emotion = "NEUTRAL";
     snapshot.last_error = "";
+    snapshot.recent_logs.push_back({1234, stt::PcLogLevel::Info, "ADB", "forward active"});
+    snapshot.recent_logs.push_back({5678, stt::PcLogLevel::Error, "Network", "connect failed"});
     snapshot.audio_input.mode = "capture";
     snapshot.audio_input.selected_device_id = "device-2";
     snapshot.audio_input.selected_device_name = "Desk Mic";
@@ -40,6 +42,12 @@ int main() {
     assert(json.find("\"reconnecting\":true") != std::string::npos);
     assert(json.find("\"sent_audio_count\":3") != std::string::npos);
     assert(json.find("hello \\\"PocketVoice\\\"\\nline") != std::string::npos);
+    assert(json.find("\"recent_logs\"") != std::string::npos);
+    assert(json.find("\"timestamp_ms\":1234") != std::string::npos);
+    assert(json.find("\"level\":\"info\"") != std::string::npos);
+    assert(json.find("\"category\":\"ADB\"") != std::string::npos);
+    assert(json.find("\"message\":\"forward active\"") != std::string::npos);
+    assert(json.find("\"level\":\"error\"") != std::string::npos);
     assert(json.find("\"audio_input\"") != std::string::npos);
     assert(json.find("\"mode\":\"capture\"") != std::string::npos);
     assert(json.find("\"selected_device_id\":\"device-2\"") != std::string::npos);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chatbox_queue.h"
+#include "pc_logger.h"
 
 #include <mutex>
 #include <string>
@@ -33,6 +34,7 @@ struct PcRuntimeSnapshot {
     std::string last_text;
     std::string last_emotion;
     std::string last_error;
+    std::vector<PcLogEntry> recent_logs;
     PcAudioInputSnapshot audio_input;
     ChatBoxQueueSnapshot chatbox;
 };
@@ -51,6 +53,7 @@ public:
     void setLastText(std::string text, std::string emotion);
     void setLastError(std::string error);
     void clearLastError();
+    void setRecentLogs(std::vector<PcLogEntry> logs);
     void setAudioInputSnapshot(PcAudioInputSnapshot audioInput);
     void setChatBoxSnapshot(ChatBoxQueueSnapshot snapshot);
     PcRuntimeSnapshot snapshot() const;

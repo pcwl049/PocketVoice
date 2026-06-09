@@ -1,5 +1,6 @@
 #include "vad.h"
-#include <cstdio>
+#include "../pc_logger.h"
+
 #include <cstring>
 #include <cmath>
 
@@ -46,11 +47,11 @@ bool Vad::init(const std::string& modelPath, float threshold) {
     m_impl->vad = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0f);
     
     if (!m_impl->vad) {
-        printf("[VAD] Failed to create VAD\n");
+        pcLog(PcLogLevel::Error, "VAD", "Failed to create VAD");
         return false;
     }
     
-    printf("[VAD] Initialized with model: %s, threshold: %.2f\n", modelPath.c_str(), threshold);
+    pcLogf(PcLogLevel::Info, "VAD", "Initialized with model: %s, threshold: %.2f", modelPath.c_str(), threshold);
     return true;
 }
 
@@ -77,14 +78,14 @@ void Vad::process(const float* samples, size_t numSamples) {
         m_inSpeech = true;
         m_speechStart = m_currentTime - chunkDuration;
         m_silenceDuration = 0.0f;
-        printf("[VAD] Speech started at %.3f\n", m_speechStart);
+        pcLogf(PcLogLevel::Info, "VAD", "Speech started at %.3f", m_speechStart);
     } else if (!isSpeech && m_inSpeech) {
         m_silenceDuration += chunkDuration;
         
         if (m_silenceDuration >= m_threshold) {
             detectSegment();
             m_inSpeech = false;
-            printf("[VAD] Speech ended at %.3f, duration %.3f\n", m_currentTime, m_currentTime - m_speechStart);
+            pcLogf(PcLogLevel::Info, "VAD", "Speech ended at %.3f, duration %.3f", m_currentTime, m_currentTime - m_speechStart);
         }
     }
     

@@ -1,4 +1,5 @@
 #include "sender.h"
+#include "../pc_logger.h"
 #include "../../common/protocol.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -32,13 +33,13 @@ bool OscSender::init(const std::string& ip, int port) {
     
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("[OSC] WSAStartup failed\n");
+        pcLog(PcLogLevel::Error, "OSC", "WSAStartup failed");
         return false;
     }
     
     m_impl->socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (m_impl->socket == INVALID_SOCKET) {
-        printf("[OSC] Failed to create socket\n");
+        pcLog(PcLogLevel::Error, "OSC", "Failed to create socket");
         return false;
     }
     
@@ -48,7 +49,7 @@ bool OscSender::init(const std::string& ip, int port) {
     
     m_lastSendTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(2000);
     
-    printf("[OSC] Sender initialized: %s:%d\n", ip.c_str(), port);
+    pcLogf(PcLogLevel::Info, "OSC", "Sender initialized: %s:%d", ip.c_str(), port);
     return true;
 }
 

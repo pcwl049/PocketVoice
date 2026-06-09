@@ -1,12 +1,16 @@
 #include "network.h"
 #include "protocol.h"
-#include <cstdio>
+#include <android/log.h>
 #include <cstring>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <mutex>
+
+#define LOG_TAG "STT_Network"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace stt {
 
@@ -26,7 +30,7 @@ bool NetworkServer::start(int port) {
     
     m_impl->serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (m_impl->serverSocket < 0) {
-        printf("[Network] Failed to create socket\n");
+        LOGE("Failed to create socket");
         return false;
     }
     
@@ -39,13 +43,13 @@ bool NetworkServer::start(int port) {
     addr.sin_port = htons(port);
     
     if (bind(m_impl->serverSocket, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        printf("[Network] Failed to bind port %d\n", port);
+        LOGE("Failed to bind port %d", port);
         close(m_impl->serverSocket);
         return false;
     }
     
     if (listen(m_impl->serverSocket, 1) < 0) {
-        printf("[Network] Failed to listen\n");
+        LOGE("Failed to listen");
         close(m_impl->serverSocket);
         return false;
     }
@@ -53,7 +57,7 @@ bool NetworkServer::start(int port) {
     m_running = true;
     m_acceptThread = std::thread(&NetworkServer::acceptThread, this);
     
-    printf("[Network] Server started on port %d\n", port);
+    LOGI("Server started on port %d", port);
     return true;
 }
 
@@ -87,7 +91,7 @@ void NetworkServer::stop() {
         m_acceptThread.join();
     }
     
-    printf("[Network] Server stopped\n");
+    LOGI("Server stopped");
 }
 
 bool NetworkServer::isRunning() const {
@@ -104,7 +108,7 @@ void NetworkServer::setErrorCallback(ErrorCallback callback) {
 
 void NetworkServer::acceptThread() {
     while (m_running) {
-        printf("[Network] Waiting for connection...\n");
+        LOGI("Waiting for connection");
         
         sockaddr_in clientAddr = {};
         socklen_t clientLen = sizeof(clientAddr);
@@ -113,14 +117,14 @@ void NetworkServer::acceptThread() {
         
         if (clientSocket < 0) {
             if (m_running) {
-                printf("[Network] Accept failed\n");
+                LOGE("Accept failed");
             }
             continue;
         }
         
         char clientIp[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
-        printf("[Network] Client connected: %s:%d\n", clientIp, ntohs(clientAddr.sin_port));
+        LOGI("Client connected: %s:%d", clientIp, ntohs(clientAddr.sin_port));
         
         {
             std::lock_guard<std::mutex> lock(m_clientMutex);
@@ -150,7 +154,7 @@ void NetworkServer::clientThread(int clientSocket) {
     while (m_running && clientSocket >= 0) {
         int received = recv(clientSocket, (char*)headerBuf, 8, MSG_WAITALL);
         if (received <= 0) {
-            printf("[Network] Client disconnected\n");
+            LOGI("Client disconnected");
             break;
         }
         
@@ -162,7 +166,7 @@ void NetworkServer::clientThread(int clientSocket) {
                         (headerBuf[6] << 8) | headerBuf[7];
         
         if (header.magic != MAGIC) {
-            printf("[Network] Invalid magic: 0x%04X\n", header.magic);
+            LOGE("Invalid magic: 0x%04X", header.magic);
             continue;
         }
         
@@ -184,7 +188,7 @@ void NetworkServer::clientThread(int clientSocket) {
                 size_t sampleBytes = payload.size() - offset;
                 if (header.flags & FLAG_HAS_SEGMENT_ID) {
                     if (sampleBytes < 4) {
-                        printf("[Network] Audio payload missing segment id\n");
+                        LOGE("Audio payload missing segment id");
                         continue;
                     }
                     sampleBytes -= 4;

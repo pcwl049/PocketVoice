@@ -1,4 +1,5 @@
 #include "client.h"
+#include "../pc_logger.h"
 #include "../../common/protocol.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -6,7 +7,6 @@
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <cstdio>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -29,13 +29,13 @@ bool NetworkClient::connect(const std::string& host, int port) {
     
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("[Network] WSAStartup failed\n");
+        pcLog(PcLogLevel::Error, "Network", "WSAStartup failed");
         return false;
     }
     
     m_impl->socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (m_impl->socket == INVALID_SOCKET) {
-        printf("[Network] Failed to create socket\n");
+        pcLog(PcLogLevel::Error, "Network", "Failed to create socket");
         return false;
     }
     
@@ -44,10 +44,10 @@ bool NetworkClient::connect(const std::string& host, int port) {
     addr.sin_port = htons(port);
     inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
     
-    printf("[Network] Connecting to %s:%d...\n", host.c_str(), port);
+    pcLogf(PcLogLevel::Info, "Network", "Connecting to %s:%d", host.c_str(), port);
     
     if (::connect(m_impl->socket, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        printf("[Network] Connection failed: %d\n", WSAGetLastError());
+        pcLogf(PcLogLevel::Error, "Network", "Connection failed: %d", WSAGetLastError());
         closesocket(m_impl->socket);
         m_impl->socket = INVALID_SOCKET;
         return false;
@@ -57,7 +57,7 @@ bool NetworkClient::connect(const std::string& host, int port) {
     m_running = true;
     m_receiveThread = std::thread(&NetworkClient::receiveThread, this);
     
-    printf("[Network] Connected to %s:%d\n", host.c_str(), port);
+    pcLogf(PcLogLevel::Info, "Network", "Connected to %s:%d", host.c_str(), port);
     return true;
 }
 
@@ -78,7 +78,7 @@ void NetworkClient::disconnect() {
     }
     
     m_connected = false;
-    printf("[Network] Disconnected\n");
+    pcLog(PcLogLevel::Info, "Network", "Disconnected");
 }
 
 bool NetworkClient::isConnected() const {
@@ -142,7 +142,7 @@ void NetworkClient::receiveThread() {
         int received = recv(m_impl->socket, (char*)headerBuf, 8, MSG_WAITALL);
         if (received <= 0) {
             if (m_running) {
-                printf("[Network] Connection lost\n");
+                pcLog(PcLogLevel::Warning, "Network", "Connection lost");
                 if (m_errorCallback) {
                     m_errorCallback("Connection lost");
                 }
@@ -158,7 +158,7 @@ void NetworkClient::receiveThread() {
         header.length = (headerBuf[4] << 24) | (headerBuf[5] << 16) | (headerBuf[6] << 8) | headerBuf[7];
         
         if (header.magic != MAGIC) {
-            printf("[Network] Invalid magic: 0x%04X\n", header.magic);
+            pcLogf(PcLogLevel::Warning, "Network", "Invalid magic: 0x%04X", header.magic);
             continue;
         }
         

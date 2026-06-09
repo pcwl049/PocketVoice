@@ -42,6 +42,10 @@ std::string pcStatusPageHtml() {
       overflow-x: hidden;
     }
 
+    body.dragging {
+      cursor: move;
+    }
+
     body::before {
       content: "";
       position: fixed;
@@ -56,17 +60,27 @@ std::string pcStatusPageHtml() {
     }
 
     .shell {
-      width: min(1180px, calc(100% - 40px));
-      margin: 0 auto;
-      padding: 30px 0 42px;
+      min-height: 100vh;
     }
 
     .topbar {
       display: flex;
-      align-items: flex-end;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 18px;
-      margin-bottom: 22px;
+      width: 100%;
+      min-height: 86px;
+      padding: 14px 20px 12px;
+      user-select: none;
+      border-bottom: 1px solid rgba(229, 224, 211, 0.08);
+      background: rgba(17, 19, 18, 0.36);
+      backdrop-filter: blur(14px);
+    }
+
+    .content {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 22px 0 42px;
     }
 
     .brand h1 {
@@ -99,6 +113,21 @@ std::string pcStatusPageHtml() {
       margin-top: 10px;
     }
 
+    .window-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .window-btn {
+      width: 34px;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+    }
+
     .dot {
       width: 9px;
       height: 9px;
@@ -118,6 +147,7 @@ std::string pcStatusPageHtml() {
     }
 
     .panel {
+      position: relative;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -126,6 +156,10 @@ std::string pcStatusPageHtml() {
     }
 
     .panel.pad { padding: 18px; }
+
+    .panel.device-open {
+      z-index: 50;
+    }
 
     .status-grid {
       display: grid;
@@ -211,7 +245,11 @@ std::string pcStatusPageHtml() {
       border-color: rgba(216, 173, 111, 0.34);
     }
 
-    select {
+    .device-picker {
+      position: relative;
+    }
+
+    .device-button {
       width: 100%;
       min-height: 38px;
       padding: 0 12px;
@@ -223,17 +261,66 @@ std::string pcStatusPageHtml() {
       font-size: 13px;
       outline: none;
       transition: background 150ms ease, border-color 150ms ease;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
 
-    select:hover,
-    select:focus {
+    .device-button::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-right: 1px solid var(--muted);
+      border-bottom: 1px solid var(--muted);
+      transform: rotate(45deg) translateY(-2px);
+      flex: 0 0 auto;
+    }
+
+    .device-button:hover,
+    .device-button:focus,
+    .device-button.open {
       background: rgba(142, 191, 123, 0.10);
       border-color: rgba(142, 191, 123, 0.30);
     }
 
-    option {
-      color: #111312;
-      background: #ece8dc;
+    .device-button:disabled {
+      cursor: default;
+      opacity: 0.58;
+    }
+
+    .device-menu {
+      position: fixed;
+      z-index: 10000;
+      display: none;
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      background: rgba(29, 32, 30, 0.98);
+      box-shadow: var(--shadow);
+    }
+
+    .device-menu.open {
+      display: grid;
+      gap: 4px;
+    }
+
+    .device-option {
+      width: 100%;
+      min-height: 34px;
+      justify-content: flex-start;
+      text-align: left;
+      border-color: transparent;
+      background: transparent;
+    }
+
+    .device-option.active {
+      color: #f4f0e5;
+      background: rgba(142, 191, 123, 0.16);
+      border-color: rgba(142, 191, 123, 0.26);
     }
 
     .field {
@@ -278,6 +365,11 @@ std::string pcStatusPageHtml() {
     .side {
       display: grid;
       gap: 18px;
+      position: relative;
+    }
+
+    .side.device-open {
+      z-index: 60;
     }
 
     .metrics {
@@ -324,13 +416,55 @@ std::string pcStatusPageHtml() {
       word-break: break-word;
     }
 
+    .event-log {
+      display: grid;
+      gap: 7px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .event-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 8px;
+      padding: 9px 10px;
+      border-radius: 7px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .event-row .level {
+      width: 7px;
+      height: 7px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .event-row.warn .level { background: var(--warn); }
+    .event-row.error .level { background: var(--bad); }
+
+    .event-row strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .event-row span {
+      color: var(--muted);
+      word-break: break-word;
+    }
+
     .muted { color: var(--muted); }
     .ok-text { color: var(--ok); }
     .warn-text { color: var(--warn); }
     .bad-text { color: var(--bad); }
 
     @media (max-width: 860px) {
-      .shell { width: min(100% - 24px, 1180px); padding-top: 22px; }
+      .topbar { padding-inline: 12px; }
+      .content { width: min(100% - 24px, 1180px); padding-top: 18px; }
       .topbar { align-items: flex-start; flex-direction: column; }
       .grid { grid-template-columns: 1fr; }
       .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -349,15 +483,21 @@ std::string pcStatusPageHtml() {
       <div class="brand">
         <h1>PocketVoice Console</h1>
         <div class="top-actions">
-          <button id="listen-btn" type="button">停止监听</button>
           <button id="reconnect-btn" type="button">重连手机</button>
+          <button id="listen-btn" type="button">停止监听</button>
         </div>
-        <p>PC 端只读运行面板</p>
       </div>
-      <div class="poll"><span id="poll-dot" class="dot warn"></span><span id="poll-text">连接状态读取中</span></div>
+      <div>
+        <div class="window-actions">
+          <button id="minimize-window-btn" class="window-btn" type="button" title="最小化">−</button>
+          <button id="close-window-btn" class="window-btn warn" type="button" title="关闭">×</button>
+        </div>
+        <div class="poll"><span id="poll-dot" class="dot warn"></span><span id="poll-text">连接状态读取中</span></div>
+      </div>
     </header>
 
-    <section class="grid">
+    <section class="content">
+    <div class="grid">
       <div>
         <div class="status-grid">
           <div class="status"><span>手机连接</span><strong><i id="phone-dot" class="dot"></i><b id="phone">--</b></strong></div>
@@ -375,8 +515,8 @@ std::string pcStatusPageHtml() {
         </div>
       </div>
 
-      <aside class="side">
-        <section class="panel pad">
+      <aside id="side-panel" class="side">
+        <section id="runtime-panel" class="panel pad">
           <div class="section-title" style="padding:0 0 12px;border-bottom:0">
             <span>ChatBox 队列</span>
             <span id="dry-run" class="muted">dry-run: --</span>
@@ -402,10 +542,11 @@ std::string pcStatusPageHtml() {
             <span id="running" class="muted">--</span>
           </div>
           <div class="field">
-            <label for="audio-device-select">音频输入</label>
-            <select id="audio-device-select">
-              <option value="">默认录音设备</option>
-            </select>
+            <label for="audio-device-button">音频输入</label>
+            <div class="device-picker">
+              <button id="audio-device-button" class="device-button" type="button">默认录音设备</button>
+              <div id="audio-device-menu" class="device-menu" role="menu"></div>
+            </div>
             <div id="audio-device-note" class="device-note">等待设备列表</div>
           </div>
           <div class="metrics">
@@ -421,7 +562,16 @@ std::string pcStatusPageHtml() {
           </div>
           <div id="error" class="error muted">无</div>
         </section>
+
+        <section class="panel pad">
+          <div class="section-title" style="padding:0 0 12px;border-bottom:0">
+            <span>事件</span>
+            <span class="muted">最近</span>
+          </div>
+          <div id="event-log" class="event-log"></div>
+        </section>
       </aside>
+    </div>
     </section>
   </main>
 
@@ -431,7 +581,14 @@ std::string pcStatusPageHtml() {
     let queuePaused = false;
     let listeningActive = true;
     let selectedAudioDeviceId = "";
-    let deviceSelectDirty = false;
+    let audioDevices = [];
+    let deviceMenuOpen = false;
+
+    function postHostMessage(type) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(type);
+      }
+    }
 
     function setBool(id, dotId, value, trueText, falseText) {
       $(id).textContent = value ? trueText : falseText;
@@ -444,24 +601,28 @@ std::string pcStatusPageHtml() {
     }
 
     function renderAudioDevices(audioInput) {
-      const select = $("audio-device-select");
+      const button = $("audio-device-button");
+      const menu = $("audio-device-menu");
       const note = $("audio-device-note");
       const input = audioInput || {};
       const devices = Array.isArray(input.devices) ? input.devices : [];
       const currentId = input.selected_device_id || "";
       selectedAudioDeviceId = currentId;
+      audioDevices = [{ id: "", name: "默认录音设备", is_default: !currentId }].concat(devices.map((device) => ({
+        id: device.id || "",
+        name: (device.name || device.id || "音频输入") + (device.is_default ? " · 默认" : ""),
+        is_default: !!device.is_default,
+      })));
 
-      if (!deviceSelectDirty) {
-        const options = ['<option value="">默认录音设备</option>'].concat(devices.map((device) => {
-          const label = (device.name || device.id || "音频输入") + (device.is_default ? " · 默认" : "");
-          return `<option value="${escapeHtml(device.id || "")}">${escapeHtml(label)}</option>`;
-        }));
-        select.innerHTML = options.join("");
-        select.value = currentId;
-      }
+      const selected = audioDevices.find((device) => device.id === currentId) || audioDevices[0];
+      button.textContent = selected ? selected.name : "默认录音设备";
+      menu.innerHTML = audioDevices.map((device) => {
+        const active = device.id === currentId ? " active" : "";
+        return `<button class="device-option${active}" type="button" data-id="${escapeHtml(device.id)}">${escapeHtml(device.name)}</button>`;
+      }).join("");
 
       const loopback = input.mode === "loopback";
-      select.disabled = loopback || devices.length === 0;
+      button.disabled = loopback || devices.length === 0;
       if (loopback) {
         note.textContent = "当前使用播放回环";
       } else if (devices.length === 0) {
@@ -471,12 +632,49 @@ std::string pcStatusPageHtml() {
       }
     }
 
+    function positionDeviceMenu() {
+      const button = $("audio-device-button");
+      const menu = $("audio-device-menu");
+      const rect = button.getBoundingClientRect();
+      const margin = 8;
+      const availableBelow = Math.max(120, window.innerHeight - rect.bottom - margin);
+      menu.style.left = rect.left + "px";
+      menu.style.top = (rect.bottom + 6) + "px";
+      menu.style.width = rect.width + "px";
+      menu.style.maxHeight = Math.min(260, availableBelow) + "px";
+    }
+
+    function setDeviceMenuOpen(open) {
+      deviceMenuOpen = open;
+      $("side-panel").classList.toggle("device-open", open);
+      $("runtime-panel").classList.toggle("device-open", open);
+      $("audio-device-button").classList.toggle("open", open);
+      if (open) positionDeviceMenu();
+      $("audio-device-menu").classList.toggle("open", open);
+    }
+
     function escapeHtml(value) {
       return String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function renderEventLog(entries) {
+      const log = $("event-log");
+      const rows = Array.isArray(entries) ? entries.slice(-8).reverse() : [];
+      if (rows.length === 0) {
+        log.innerHTML = '<div class="event-row"><i class="level"></i><span>暂无事件</span></div>';
+        return;
+      }
+
+      log.innerHTML = rows.map((entry) => {
+        const level = entry.level === "error" ? "error" : (entry.level === "warn" ? "warn" : "info");
+        const category = escapeHtml(entry.category || "Runtime");
+        const message = escapeHtml(entry.message || "");
+        return `<div class="event-row ${level}"><i class="level"></i><div><strong>${category}</strong><span>${message}</span></div></div>`;
+      }).join("");
     }
 
     async function refresh() {
@@ -522,11 +720,13 @@ std::string pcStatusPageHtml() {
         const err = data.last_error || queue.last_error || "";
         $("error").textContent = text(err);
         $("error").classList.toggle("muted", !err);
+        renderEventLog(data.recent_logs);
       } catch (err) {
         $("poll-dot").className = "dot bad";
         $("poll-text").textContent = "状态读取失败";
         $("error").textContent = err.message || String(err);
         $("error").classList.remove("muted");
+        renderEventLog([{ level: "error", category: "Status", message: err.message || String(err) }]);
       }
     }
 
@@ -554,14 +754,31 @@ std::string pcStatusPageHtml() {
       postControl(listeningActive ? "/control/listen/stop" : "/control/listen/start", listeningActive ? "停止监听" : "开始监听");
     });
     $("reconnect-btn").addEventListener("click", () => postControl("/control/phone/reconnect", "重连手机"));
-    $("audio-device-select").addEventListener("focus", () => { deviceSelectDirty = true; });
-    $("audio-device-select").addEventListener("change", async () => {
-      const nextId = $("audio-device-select").value;
-      deviceSelectDirty = false;
+    document.body.appendChild($("audio-device-menu"));
+    $("audio-device-button").addEventListener("click", () => setDeviceMenuOpen(!deviceMenuOpen));
+    $("audio-device-menu").addEventListener("click", async (event) => {
+      const option = event.target.closest(".device-option");
+      if (!option) return;
+      const nextId = option.dataset.id || "";
+      setDeviceMenuOpen(false);
       await postControl("/control/audio/input-device", "切换音频输入", { id: nextId });
       selectedAudioDeviceId = nextId;
     });
-    $("audio-device-select").addEventListener("blur", () => { deviceSelectDirty = false; });
+    document.addEventListener("click", (event) => {
+      if (!$("audio-device-menu").contains(event.target) && !$("audio-device-button").contains(event.target)) {
+        setDeviceMenuOpen(false);
+      }
+    });
+    $("minimize-window-btn").addEventListener("click", () => postHostMessage("window.minimize"));
+    $("close-window-btn").addEventListener("click", () => postHostMessage("window.close"));
+    document.querySelector(".topbar").addEventListener("mousedown", (event) => {
+      if (event.button === 0 && !event.target.closest("button, .poll")) {
+        document.body.classList.add("dragging");
+        postHostMessage("window.drag");
+      }
+    });
+    document.addEventListener("mouseup", () => document.body.classList.remove("dragging"));
+    window.addEventListener("resize", () => { if (deviceMenuOpen) positionDeviceMenu(); });
     $("clear-queue-btn").addEventListener("click", () => postControl("/control/queue/clear", "清空队列"));
     $("clear-chatbox-btn").addEventListener("click", () => postControl("/control/chatbox/clear", "清空 ChatBox"));
     $("clear-error-btn").addEventListener("click", () => postControl("/control/error/clear", "清空错误"));
