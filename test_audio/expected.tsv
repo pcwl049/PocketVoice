@@ -1,0 +1,11 @@
+file	mode	expected_contains	expected_text
+# Stable corpus entries. expected_contains is the pass/fail gate; expected_text feeds the accuracy table.
+test_audio/zh-intro.wav	wav	对我做了介绍	对我做了介绍啊，那么我想说的是呢大家如果对我的研究感兴趣呢。
+test_audio/zh-intro.wav	wav-vad	对我做了介绍	对我做了介绍啊，那么我想说的是呢大家如果对我的研究感兴趣呢。
+test_audio/zh-intro.wav	simulate-wav-vad	对我做了介绍	对我做了介绍啊，那么我想说的是呢大家如果对我的研究感兴趣呢。
+test_audio/zh-finance.wav	wav	重点呢想谈三个问题	重点呢想谈三个问题。首先呢就是这一轮全球金融动荡的表现。
+test_audio/zh-finance.wav	wav-vad	重点呢想谈三个问题	重点呢想谈三个问题。首先呢就是这一轮全球金融动荡的表现。
+test_audio/zh-finance.wav	simulate-wav-vad	重点呢想谈三个问题	重点呢想谈三个问题。首先呢就是这一轮全球金融动荡的表现。
+test_audio/zh-short-alt.wav	wav	这是第一种	这是第一种。第二种叫呃与OSOS什么意思啊？
+test_audio/zh-short-alt.wav	wav-vad	这是第一种	这是第一种。第二种叫呃与OSOS什么意思啊？
+test_audio/zh-short-alt.wav	simulate-wav-vad	这是第一种	这是第一种。第二种叫呃与OSOS什么意思啊？

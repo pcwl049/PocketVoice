@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Bridge</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+
+  <main class="app">
+    <header class="hero">
+      <div>
+        <p class="title-small">VRChat ChatBox STT</p>
+        <h1>Voice Bridge</h1>
+      </div>
+      <span class="status" data-status-chip><span class="pulse"></span><span data-status-label>等待</span></span>
+    </header>
+
+    <section class="panel listen-card">
+      <div class="listen-row">
+        <div>
+          <p class="listen-state" data-service-title>准备好了</p>
+          <p class="listen-note">语音会转成 ChatBox 文本。</p>
+        </div>
+        <span class="pill mono" data-port>tcp:27000</span>
+      </div>
+      <div class="button-row">
+        <button class="primary" data-start><span>开始</span></button>
+        <button class="secondary" data-stop><span>停止</span></button>
+      </div>
+    </section>
+
+    <section class="panel now-card">
+      <div class="section-head">
+        <p class="section-title">刚刚听到</p>
+        <span class="pill" data-last-age>暂无</span>
+      </div>
+      <p class="transcript" data-last-text>等待第一段语音。</p>
+    </section>
+
+    <section class="meta-grid">
+      <div class="meta" data-metric-card>
+        <p class="meta-label">识别耗时</p>
+        <p class="meta-value mono" data-recognize-ms>--</p>
+      </div>
+      <div class="meta" data-metric-card>
+        <p class="meta-label">音频长度</p>
+        <p class="meta-value mono" data-audio-ms>--</p>
+      </div>
+    </section>
+
+    <section class="panel path-panel">
+      <div class="section-head">
+        <p class="section-title">模型</p>
+        <span class="pill mono" data-backend>unknown</span>
+      </div>
+      <p class="path-line mono" data-model-dir>正在读取模型路径。</p>
+      <p class="cache-line" data-cache-stats>缓存 0 / 0</p>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="log-head">
+        <p class="section-title">最近日志</p>
+        <button class="quiet-button" data-clear-log>清空</button>
+      </div>
+      <div class="log" data-log></div>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

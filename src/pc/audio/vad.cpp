@@ -1,0 +1,174 @@
+#include "vad.h"
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+
+extern "C" {
+#include "sherpa-onnx/c-api/c-api.h"
+}
+
+namespace stt {
+
+struct Vad::Impl {
+    const SherpaOnnxVoiceActivityDetector* vad = nullptr;
+};
+
+Vad::Vad() : m_impl(new Impl()) {}
+
+Vad::~Vad() {
+    if (m_impl->vad) {
+        SherpaOnnxDestroyVoiceActivityDetector(m_impl->vad);
+    }
+    delete m_impl;
+}
+
+bool Vad::init(const std::string& modelPath, float threshold) {
+    m_threshold = threshold;
+    
+    SherpaOnnxSileroVadModelConfig sileroConfig;
+    memset(&sileroConfig, 0, sizeof(sileroConfig));
+    
+    sileroConfig.model = modelPath.c_str();
+    sileroConfig.threshold = threshold;
+    sileroConfig.min_silence_duration = 0.5f;
+    sileroConfig.min_speech_duration = m_minSpeechDuration;
+    sileroConfig.max_speech_duration = m_maxSpeechDuration;
+    sileroConfig.window_size = 512;
+    
+    SherpaOnnxVadModelConfig config;
+    memset(&config, 0, sizeof(config));
+    config.silero_vad = sileroConfig;
+    config.sample_rate = m_sampleRate;
+    config.num_threads = 2;
+    config.provider = "cpu";
+    config.debug = 0;
+    
+    m_impl->vad = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0f);
+    
+    if (!m_impl->vad) {
+        printf("[VAD] Failed to create VAD\n");
+        return false;
+    }
+    
+    printf("[VAD] Initialized with model: %s, threshold: %.2f\n", modelPath.c_str(), threshold);
+    return true;
+}
+
+void Vad::setThreshold(float threshold) {
+    m_threshold = threshold;
+}
+
+void Vad::setCallbacks(SpeechCallback speechCb, SegmentCallback segmentCb) {
+    m_speechCallback = speechCb;
+    m_segmentCallback = segmentCb;
+}
+
+void Vad::process(const float* samples, size_t numSamples) {
+    if (!m_impl->vad) return;
+    
+    SherpaOnnxVoiceActivityDetectorAcceptWaveform(m_impl->vad, samples, (int32_t)numSamples);
+    
+    bool isSpeech = SherpaOnnxVoiceActivityDetectorDetected(m_impl->vad) != 0;
+    
+    float chunkDuration = (float)numSamples / m_sampleRate;
+    m_currentTime += chunkDuration;
+    
+    if (isSpeech && !m_inSpeech) {
+        m_inSpeech = true;
+        m_speechStart = m_currentTime - chunkDuration;
+        m_silenceDuration = 0.0f;
+        printf("[VAD] Speech started at %.3f\n", m_speechStart);
+    } else if (!isSpeech && m_inSpeech) {
+        m_silenceDuration += chunkDuration;
+        
+        if (m_silenceDuration >= m_threshold) {
+            detectSegment();
+            m_inSpeech = false;
+            printf("[VAD] Speech ended at %.3f, duration %.3f\n", m_currentTime, m_currentTime - m_speechStart);
+        }
+    }
+    
+    if (m_inSpeech && m_speechCallback) {
+        m_buffer.insert(m_buffer.end(), samples, samples + numSamples);
+        
+        if (m_buffer.size() > (size_t)(m_maxSpeechDuration * m_sampleRate)) {
+            detectSegment();
+        }
+    }
+    
+    while (!SherpaOnnxVoiceActivityDetectorEmpty(m_impl->vad)) {
+        const SherpaOnnxSpeechSegment* segment = SherpaOnnxVoiceActivityDetectorFront(m_impl->vad);
+        if (segment) {
+            if (m_segmentCallback) {
+                SpeechSegment seg;
+                seg.samples.assign(segment->samples, segment->samples + segment->n);
+                seg.start_time = segment->start / (float)m_sampleRate;
+                seg.duration = segment->n / (float)m_sampleRate;
+                m_segmentCallback(seg);
+            }
+            SherpaOnnxDestroySpeechSegment(segment);
+        }
+        SherpaOnnxVoiceActivityDetectorPop(m_impl->vad);
+    }
+}
+
+void Vad::detectSegment() {
+    if (m_buffer.empty()) return;
+    
+    if (m_segmentCallback) {
+        SpeechSegment seg;
+        seg.samples = m_buffer;
+        seg.start_time = m_speechStart;
+        seg.duration = (float)m_buffer.size() / m_sampleRate;
+        m_segmentCallback(seg);
+    }
+    
+    m_buffer.clear();
+}
+
+void Vad::flush() {
+    if (!m_impl->vad) return;
+    
+    SherpaOnnxVoiceActivityDetectorFlush(m_impl->vad);
+    
+    if (m_inSpeech && !m_buffer.empty()) {
+        detectSegment();
+        m_inSpeech = false;
+    }
+    
+    while (!SherpaOnnxVoiceActivityDetectorEmpty(m_impl->vad)) {
+        const SherpaOnnxSpeechSegment* segment = SherpaOnnxVoiceActivityDetectorFront(m_impl->vad);
+        if (segment) {
+            if (m_segmentCallback) {
+                SpeechSegment seg;
+                seg.samples.assign(segment->samples, segment->samples + segment->n);
+                seg.start_time = segment->start / (float)m_sampleRate;
+                seg.duration = segment->n / (float)m_sampleRate;
+                m_segmentCallback(seg);
+            }
+            SherpaOnnxDestroySpeechSegment(segment);
+        }
+        SherpaOnnxVoiceActivityDetectorPop(m_impl->vad);
+    }
+}
+
+void Vad::reset() {
+    if (m_impl->vad) {
+        SherpaOnnxVoiceActivityDetectorReset(m_impl->vad);
+    }
+    m_buffer.clear();
+    m_inSpeech = false;
+    m_currentTime = 0.0f;
+    m_speechStart = 0.0f;
+    m_silenceDuration = 0.0f;
+}
+
+bool Vad::isSpeech() const {
+    return m_impl->vad ? (SherpaOnnxVoiceActivityDetectorDetected(m_impl->vad) != 0) : false;
+}
+
+bool Vad::isInSpeech() const {
+    return m_inSpeech;
+}
+
+}

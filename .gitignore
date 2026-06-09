@@ -1,0 +1,52 @@
+build/
+output/
+*.tmp
+*.log
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.apk
+*.aab
+*.keystore
+local.properties
+config.json
+
+# Android / Gradle build state
+.gradle/
+src/mobile/app/build/
+src/mobile/.gradle/
+src/mobile/gradle/.gradle/
+
+# Local IDE state
+.idea/
+.vscode/
+.sisyphus/
+.playwright-mcp/
+tmp_*/
+
+# Downloaded archives and transient extraction roots
+*.tar.bz2
+*.zip
+sherpa-onnx/
+
+# Local model and SDK payloads stay on disk but out of git.
+models/
+third_party/
+src/mobile/app/src/main/jniLibs/
+
+# Local development notes stay off the public repository.
+docs/
+archive/
+AGENTS.md
+**/AGENTS.md
+
+# Generated previews
+pocketvoice-pc-console*.png
+stt-webview-preview-v0-desktop.png
+stt-webview-preview-v0-mobile.png
+
+# Keep large runtime payloads local. Scripts/docs describe how they are produced or pushed.

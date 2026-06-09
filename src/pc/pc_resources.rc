@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDR_SILERO_VAD_ONNX STT_SILERO_VAD_ONNX "models\\silero_vad.onnx"
