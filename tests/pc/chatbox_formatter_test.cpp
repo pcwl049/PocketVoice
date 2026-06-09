@@ -18,6 +18,9 @@ int main() {
     assert(!formatter.shouldSend("第一句。"));
     assert(formatter.shouldSend("第二句。"));
 
+    assert(formatter.formatMessage("这是第一种。") == "\xe2\x8c\x81 \xe5\xa3\xb0\xe9\x9f\xb3\xe8\xbd\xac\xe5\x86\x99\xef\xbc\x9a这是第一种。");
+    assert(formatter.formatMessage("⌁ 声音转写：这是第一种。") == "⌁ 声音转写：这是第一种。");
+
     puts("chatbox_formatter tests passed");
     return 0;
 }

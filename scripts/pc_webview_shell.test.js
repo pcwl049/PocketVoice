@@ -35,6 +35,8 @@ assert(main.includes("#include \"adb_bridge.h\""), "PC main should include the b
 assert(main.includes("--no-webview"), "PC main should support disabling the WebView window");
 assert(main.includes("startPcWebView"), "PC main should start the WebView shell after status server startup");
 assert(main.includes("stopPcWebView"), "PC main should stop the WebView shell during shutdown");
+assert(main.includes("prepareWavModeOutputs()"), "PC WAV test modes should initialize OSC and ChatBox queue output before sending audio");
+assert(main.includes("drainChatBoxQueueForWavMode()"), "PC WAV test modes should wait for queued ChatBox messages before exiting");
 assert(main.includes("prepareAdbForward()"), "PC main should prepare ADB forwarding during startup and reconnect");
 assert(main.includes("enableDpiAwareness()"), "PC main should enable DPI awareness before creating the WebView window");
 assert(main.includes("DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2"), "PC main should prefer per-monitor DPI awareness for crisp WebView rendering");

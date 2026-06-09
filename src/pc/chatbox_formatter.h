@@ -10,6 +10,7 @@ class ChatBoxFormatter {
 public:
     void setMaxChars(size_t maxChars);
     std::vector<std::string> splitText(const std::string& text) const;
+    std::string formatMessage(const std::string& text) const;
     bool shouldSend(const std::string& text);
 
 private:

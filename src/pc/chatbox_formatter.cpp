@@ -4,6 +4,10 @@
 
 namespace stt {
 
+namespace {
+constexpr const char* kVoiceTranscriptPrefix = "\xe2\x8c\x81 \xe5\xa3\xb0\xe9\x9f\xb3\xe8\xbd\xac\xe5\x86\x99\xef\xbc\x9a";
+}
+
 void ChatBoxFormatter::setMaxChars(size_t maxChars) {
     m_maxChars = std::max<size_t>(8, maxChars);
 }
@@ -60,6 +64,15 @@ std::vector<std::string> ChatBoxFormatter::splitText(const std::string& text) co
     }
     pushChunk(chunks, current);
     return chunks;
+}
+
+std::string ChatBoxFormatter::formatMessage(const std::string& text) const {
+    if (text.empty()) return "";
+    const std::string prefix = kVoiceTranscriptPrefix;
+    if (text.rfind(prefix, 0) == 0) {
+        return text;
+    }
+    return prefix + text;
 }
 
 bool ChatBoxFormatter::shouldSend(const std::string& text) {

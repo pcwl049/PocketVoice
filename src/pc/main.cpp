@@ -100,6 +100,8 @@ static int64_t nowMillis();
 static void startChatBoxQueue();
 static void stopChatBoxQueue();
 static void chatBoxQueueLoop();
+static void prepareWavModeOutputs();
+static void drainChatBoxQueueForWavMode();
 static void printRuntimeSnapshot(const char* label);
 static void startStatusServer();
 static void stopStatusServer();
@@ -176,6 +178,49 @@ static void chatBoxQueueLoop() {
             }
         }
         Sleep(50);
+    }
+}
+
+static void prepareWavModeOutputs() {
+    g_chatboxFormatter.setMaxChars((size_t)g_config.display.max_text_length);
+    if (!g_chatboxDryRun) {
+        if (!g_oscSender.init(g_config.osc.send.ip, g_config.osc.send.port)) {
+            stt::pcLog(PcLogLevel::Warning, "OSC", "OSC sender initialization failed");
+            g_oscReady = false;
+        } else {
+            g_oscReady = true;
+        }
+    }
+    g_runtime.setOscReady(g_oscReady);
+    startChatBoxQueue();
+}
+
+static void drainChatBoxQueueForWavMode() {
+    if (g_chatboxDryRun) return;
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+    while (std::chrono::steady_clock::now() < deadline) {
+        stt::ChatBoxQueueSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(g_chatboxQueueMutex);
+            if (!g_chatboxQueue) return;
+            snapshot = g_chatboxQueue->snapshot();
+        }
+        if (snapshot.pending_count == 0 && !snapshot.sending) {
+            return;
+        }
+        Sleep(50);
+    }
+
+    std::lock_guard<std::mutex> lock(g_chatboxQueueMutex);
+    if (g_chatboxQueue) {
+        auto snapshot = g_chatboxQueue->snapshot();
+        if (snapshot.pending_count > 0) {
+            stt::pcLogf(PcLogLevel::Warning,
+                        "ChatBox",
+                        "WAV mode exited with %zu queued message(s) still pending",
+                        snapshot.pending_count);
+        }
     }
 }
 
@@ -543,6 +588,7 @@ static void sendChatBoxText(const std::string& text, const std::string& emotion)
         if (!emoji.empty() && g_config.display.show_emotion_icon) {
             finalText = emoji + " " + finalText;
         }
+        finalText = g_chatboxFormatter.formatMessage(finalText);
         if (g_chatboxDryRun) {
             printf("[ChatBox dry-run] %s\n", finalText.c_str());
             continue;
@@ -672,6 +718,7 @@ static int runWavMode(const std::string& wavPath) {
     ).count();
     printf("[Timing] PC send-to-text: %lld ms\n", (long long)elapsedMs);
     printf("[Text] %s\n", text.c_str());
+    drainChatBoxQueueForWavMode();
     return 0;
 }
 
@@ -780,6 +827,7 @@ static int runWavVadMode(const std::string& wavPath, bool simulateLivePadding) {
            simulateLivePadding ? "simulate-wav-vad" : "wav-vad",
            (long long)elapsedMs);
     printf("[Text] %s\n", text.c_str());
+    drainChatBoxQueueForWavMode();
     return 0;
 }
 
@@ -1044,15 +1092,24 @@ int main(int argc, char* argv[]) {
     g_runtime.setListeningActive(true);
 
     if (argc >= 3 && std::string(argv[1]) == "--wav") {
-        return runWavMode(argv[2]);
+        prepareWavModeOutputs();
+        int exitCode = runWavMode(argv[2]);
+        stopChatBoxQueue();
+        return exitCode;
     }
 
     if (argc >= 3 && std::string(argv[1]) == "--wav-vad") {
-        return runWavVadMode(argv[2], false);
+        prepareWavModeOutputs();
+        int exitCode = runWavVadMode(argv[2], false);
+        stopChatBoxQueue();
+        return exitCode;
     }
 
     if (argc >= 3 && std::string(argv[1]) == "--simulate-wav-vad") {
-        return runWavVadMode(argv[2], true);
+        prepareWavModeOutputs();
+        int exitCode = runWavVadMode(argv[2], true);
+        stopChatBoxQueue();
+        return exitCode;
     }
     startStatusServer();
     startPcWebView(useWebView);
