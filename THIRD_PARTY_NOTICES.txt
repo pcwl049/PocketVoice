@@ -1,0 +1,67 @@
+PocketVoice third-party notices
+
+PocketVoice source code is licensed under the Apache License, Version 2.0.
+Binary packages include additional software and model files under their own
+licenses.
+
+Qualcomm AI Runtime / QNN
+
+The Android APK may include Qualcomm AI Runtime / QNN shared libraries such as
+libQnnCpu.so, libQnnHtp.so, libQnnSystem.so, and related HTP support libraries.
+These files are Qualcomm Technologies, Inc. software and remain subject to the
+Qualcomm license accepted for the Qualcomm AI Runtime SDK.
+
+The local SDK license permits distribution of Qualcomm software in object code
+format when incorporated in an application, and does not grant permission to
+distribute or sublicense the Qualcomm software on a standalone basis. See the
+bundled Qualcomm license and notice files when present:
+
+- licenses/QUALCOMM_QAIRT_LICENSE.pdf
+- licenses/QUALCOMM_QNN_NOTICE.txt
+- licenses/QUALCOMM_NOTICE_WINDOWS.txt
+
+Do not extract and redistribute the Qualcomm runtime libraries separately from
+the PocketVoice Android application.
+
+sherpa-onnx
+
+PocketVoice uses sherpa-onnx components. sherpa-onnx is licensed under the
+Apache License, Version 2.0. When available, the full license is included as:
+
+- licenses/SHERPA_ONNX_LICENSE.txt
+
+ONNX Runtime
+
+PocketVoice PC binaries may include ONNX Runtime. ONNX Runtime is licensed
+under the MIT License. When available, the full license is included as:
+
+- licenses/ONNXRUNTIME_LICENSE.txt
+
+Android SDK Platform Tools / ADB
+
+PocketVoice binary packages may include Android Debug Bridge files from Android
+SDK Platform Tools to create USB port forwarding. The platform-tools notice file
+is included in:
+
+- adb/NOTICE.txt
+
+SenseVoice / FunASR model files
+
+The Android APK may include a converted SenseVoice model library and model data.
+The model package used by this project references FunASR / SenseVoice licensing.
+When available, the original model package license is included as:
+
+- licenses/SENSEVOICE_MODEL_LICENSE.txt
+
+The local model notes identify upstream sources:
+
+- https://github.com/FunAudioLLM/SenseVoice
+- https://huggingface.co/ASLP-lab/WSYue-ASR/tree/main/sensevoice_small_yue
+
+The model files should be reviewed separately before commercial distribution.
+
+Microsoft Visual C++ runtime
+
+PocketVoice PC binaries may include Microsoft Visual C++ runtime DLLs required
+to run the application on Windows. Those files remain subject to Microsoft
+redistribution terms.

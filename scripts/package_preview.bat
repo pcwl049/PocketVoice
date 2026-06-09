@@ -8,6 +8,7 @@ set "RELEASE_ROOT=%ROOT_DIR%\build\release"
 set "PACKAGE_DIR=%RELEASE_ROOT%\PocketVoice-preview"
 set "ZIP_PATH=%RELEASE_ROOT%\PocketVoice-preview.zip"
 set "ADB_SOURCE=%ROOT_DIR%\tools\platform-tools"
+set "LICENSE_DIR=%PACKAGE_DIR%\licenses"
 
 if /I "%~1"=="--adb-source" (
   set "ADB_SOURCE=%~2"
@@ -51,10 +52,19 @@ if exist "%PACKAGE_DIR%" rmdir /s /q "%PACKAGE_DIR%"
 if exist "%ZIP_PATH%" del /q "%ZIP_PATH%"
 mkdir "%PACKAGE_DIR%"
 mkdir "%PACKAGE_DIR%\adb"
+mkdir "%LICENSE_DIR%"
 
 copy /Y "%PC_BUILD%\stt_pc.exe" "%PACKAGE_DIR%\PocketVoice.exe" >nul
 copy /Y "%PC_BUILD%\*.dll" "%PACKAGE_DIR%\" >nul
 copy /Y "%PC_BUILD%\config.json" "%PACKAGE_DIR%\" >nul
+if exist "%ROOT_DIR%\LICENSE" copy /Y "%ROOT_DIR%\LICENSE" "%LICENSE_DIR%\POCKETVOICE_LICENSE.txt" >nul
+if exist "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" copy /Y "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" "%PACKAGE_DIR%\THIRD_PARTY_NOTICES.txt" >nul
+if exist "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" copy /Y "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" "%LICENSE_DIR%\SHERPA_ONNX_LICENSE.txt" >nul
+if exist "%ROOT_DIR%\build\qairt-py310-venv\Lib\site-packages\onnxruntime\LICENSE" copy /Y "%ROOT_DIR%\build\qairt-py310-venv\Lib\site-packages\onnxruntime\LICENSE" "%LICENSE_DIR%\ONNXRUNTIME_LICENSE.txt" >nul
+if exist "%ROOT_DIR%\build\qairt-sdk\LICENSE.pdf" copy /Y "%ROOT_DIR%\build\qairt-sdk\LICENSE.pdf" "%LICENSE_DIR%\QUALCOMM_QAIRT_LICENSE.pdf" >nul
+if exist "%ROOT_DIR%\build\qairt-sdk\QNN_NOTICE.txt" copy /Y "%ROOT_DIR%\build\qairt-sdk\QNN_NOTICE.txt" "%LICENSE_DIR%\QUALCOMM_QNN_NOTICE.txt" >nul
+if exist "%ROOT_DIR%\build\qairt-sdk\NOTICE_WINDOWS.txt" copy /Y "%ROOT_DIR%\build\qairt-sdk\NOTICE_WINDOWS.txt" "%LICENSE_DIR%\QUALCOMM_NOTICE_WINDOWS.txt" >nul
+if exist "%ROOT_DIR%\models\sensevoice\sherpa-onnx-qnn-SM8550-binary-30-seconds-sense-voice-zh-en-ja-ko-yue-2024-07-17-int8\LICENSE" copy /Y "%ROOT_DIR%\models\sensevoice\sherpa-onnx-qnn-SM8550-binary-30-seconds-sense-voice-zh-en-ja-ko-yue-2024-07-17-int8\LICENSE" "%LICENSE_DIR%\SENSEVOICE_MODEL_LICENSE.txt" >nul
 
 copy /Y "%ADB_SOURCE%\adb.exe" "%PACKAGE_DIR%\adb\" >nul
 copy /Y "%ADB_SOURCE%\AdbWinApi.dll" "%PACKAGE_DIR%\adb\" >nul

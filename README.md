@@ -36,3 +36,11 @@ PocketVoice 是给 VRChat ChatBox 用的语音转文字工具。
 5. 在电脑上运行 `PocketVoice.exe`。
 6. 在 PC 控制窗口选择音频输入。
 7. 进入 VRChat，确认 OSC / ChatBox 已开启。
+
+## 许可证
+
+PocketVoice 采用 Apache License 2.0 开源。二进制包内包含的第三方组件和模型文件遵循各自许可证，详见 `THIRD_PARTY_NOTICES.txt`。
+
+## 构建说明
+
+由 GPT-5.5 构建。
