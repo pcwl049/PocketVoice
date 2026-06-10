@@ -420,6 +420,22 @@ h1 {
   font-size: 12px;
 }
 
+.toggle-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
 .log-head {
   display: flex;
   align-items: center;

@@ -32,6 +32,7 @@
   const recognizeMs = document.querySelector("[data-recognize-ms]");
   const audioMs = document.querySelector("[data-audio-ms]");
   const cacheStats = document.querySelector("[data-cache-stats]");
+  const cacheToggle = document.querySelector("[data-cache-toggle]");
   const log = document.querySelector("[data-log]");
   const metricCards = Array.from(document.querySelectorAll("[data-metric-card]"));
 
@@ -162,6 +163,9 @@
     recognizeMs.textContent = currentRecognize ? `${currentRecognize}ms` : "--";
     audioMs.textContent = formatDuration(currentAudio);
     cacheStats.textContent = `${TEXT.cache} ${snapshot.cacheHits || 0} / ${snapshot.totalRequests || 0}`;
+    if (cacheToggle) {
+      cacheToggle.checked = !!snapshot.cacheEnabled;
+    }
 
     startButton.disabled = status === "starting" || status === "running" || stopping;
     stopButton.disabled = status === "stopped" && !stopping;
@@ -203,6 +207,16 @@
     previousLogKey = "";
     render();
   });
+
+  if (cacheToggle) {
+    cacheToggle.addEventListener("change", function () {
+      const api = bridge();
+      if (api && typeof api.setCacheEnabled === "function") {
+        api.setCacheEnabled(!!cacheToggle.checked);
+      }
+      render();
+    });
+  }
 
   render();
   setInterval(render, 500);

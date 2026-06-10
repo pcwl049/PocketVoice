@@ -18,6 +18,10 @@ assert(
   "release verification should run the CPU fallback WAV suite",
 );
 assert(
+  script.includes("test_audio_buffer.bat"),
+  "release static verification should run audio buffer regression tests",
+);
+assert(
   script.includes("test_qnn_pc_wav_suite.bat"),
   "release verification should run the QNN Android WAV suite",
 );

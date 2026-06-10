@@ -23,15 +23,19 @@ Vad::~Vad() {
     delete m_impl;
 }
 
-bool Vad::init(const std::string& modelPath, float threshold) {
-    m_threshold = threshold;
+bool Vad::init(const std::string& modelPath, float speechThreshold, float endSilenceDuration,
+               float minSpeechDuration, float maxSpeechDuration) {
+    m_threshold = speechThreshold;
+    m_endSilenceDuration = endSilenceDuration;
+    m_minSpeechDuration = minSpeechDuration;
+    m_maxSpeechDuration = maxSpeechDuration;
     
     SherpaOnnxSileroVadModelConfig sileroConfig;
     memset(&sileroConfig, 0, sizeof(sileroConfig));
     
     sileroConfig.model = modelPath.c_str();
-    sileroConfig.threshold = threshold;
-    sileroConfig.min_silence_duration = 0.5f;
+    sileroConfig.threshold = speechThreshold;
+    sileroConfig.min_silence_duration = endSilenceDuration;
     sileroConfig.min_speech_duration = m_minSpeechDuration;
     sileroConfig.max_speech_duration = m_maxSpeechDuration;
     sileroConfig.window_size = 512;
@@ -51,7 +55,13 @@ bool Vad::init(const std::string& modelPath, float threshold) {
         return false;
     }
     
-    pcLogf(PcLogLevel::Info, "VAD", "Initialized with model: %s, threshold: %.2f", modelPath.c_str(), threshold);
+    pcLogf(PcLogLevel::Info,
+           "VAD",
+           "Initialized with model: %s, speech_threshold: %.2f, end_silence: %.2f, max_speech: %.2f",
+           modelPath.c_str(),
+           speechThreshold,
+           endSilenceDuration,
+           maxSpeechDuration);
     return true;
 }
 
@@ -82,7 +92,7 @@ void Vad::process(const float* samples, size_t numSamples) {
     } else if (!isSpeech && m_inSpeech) {
         m_silenceDuration += chunkDuration;
         
-        if (m_silenceDuration >= m_threshold) {
+        if (m_silenceDuration >= m_endSilenceDuration) {
             detectSegment();
             m_inSpeech = false;
             pcLogf(PcLogLevel::Info, "VAD", "Speech ended at %.3f, duration %.3f", m_currentTime, m_currentTime - m_speechStart);

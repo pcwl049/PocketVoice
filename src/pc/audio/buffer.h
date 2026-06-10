@@ -21,6 +21,7 @@ public:
     void setMaxSegments(int max);
     void setMaxDuration(float seconds);
     void setSeparator(const std::string& sep);
+    void setInterSegmentSilence(float seconds);
     
     void addSegment(const float* samples, size_t numSamples);
     bool shouldSend() const;
@@ -38,6 +39,7 @@ private:
     float m_mergeWindow = 1.5f;
     int m_maxSegments = 5;
     float m_maxDuration = 30.0f;
+    float m_interSegmentSilence = 0.0f;
     std::string m_separator = "，";
     
     int m_nextSegmentId = 0;

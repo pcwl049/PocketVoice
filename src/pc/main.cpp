@@ -102,6 +102,7 @@ static void stopChatBoxQueue();
 static void chatBoxQueueLoop();
 static void prepareWavModeOutputs();
 static void drainChatBoxQueueForWavMode();
+static void configureAudioBuffer();
 static void printRuntimeSnapshot(const char* label);
 static void startStatusServer();
 static void stopStatusServer();
@@ -222,6 +223,13 @@ static void drainChatBoxQueueForWavMode() {
                         snapshot.pending_count);
         }
     }
+}
+
+static void configureAudioBuffer() {
+    g_buffer.setMergeWindow(g_config.merge.window);
+    g_buffer.setMaxSegments(g_config.merge.max_segments);
+    g_buffer.setMaxDuration(g_config.merge.max_total_duration);
+    g_buffer.setInterSegmentSilence(g_config.merge.inter_segment_silence);
 }
 
 static void printRuntimeSnapshot(const char* label) {
@@ -740,7 +748,11 @@ static int runWavVadMode(const std::string& wavPath, bool simulateLivePadding) {
     g_preRollBuffer.setCapacitySeconds(kLiveRingBufferSeconds);
 
     std::string vadModelPath = resolveVadModelPath();
-    if (!g_vad.init(vadModelPath, g_config.vad.silence_threshold)) {
+    if (!g_vad.init(vadModelPath,
+                    g_config.vad.speech_threshold,
+                    g_config.vad.end_silence_duration,
+                    g_config.vad.min_speech_duration,
+                    g_config.vad.max_speech_duration)) {
         printf("[Error] Failed to initialize VAD\n");
         printf("  Model path: %s\n", vadModelPath.c_str());
         return 1;
@@ -756,6 +768,7 @@ static int runWavVadMode(const std::string& wavPath, bool simulateLivePadding) {
 
     g_networkClient.setTextCallback(onTextReceived);
     g_vad.setCallbacks(nullptr, onSpeechSegment);
+    configureAudioBuffer();
     auto sendStart = std::chrono::steady_clock::now();
 
     {
@@ -1038,9 +1051,11 @@ int main(int argc, char* argv[]) {
     
     stt::pcLogf(PcLogLevel::Info,
                 "Config",
-                "Loaded configuration: vad_threshold=%.2f merge_window=%.2f network=%s:%d",
-                g_config.vad.silence_threshold,
+                "Loaded configuration: speech_threshold=%.2f end_silence=%.2f merge_window=%.2f inter_segment_silence=%.2f network=%s:%d",
+                g_config.vad.speech_threshold,
+                g_config.vad.end_silence_duration,
                 g_config.merge.window,
+                g_config.merge.inter_segment_silence,
                 g_config.network.host.c_str(),
                 g_config.network.port);
     printf("\n");
@@ -1116,7 +1131,11 @@ int main(int argc, char* argv[]) {
     prepareAdbForward();
     
     std::string vadModelPath = resolveVadModelPath();
-    if (!g_vad.init(vadModelPath, g_config.vad.silence_threshold)) {
+    if (!g_vad.init(vadModelPath,
+                    g_config.vad.speech_threshold,
+                    g_config.vad.end_silence_duration,
+                    g_config.vad.min_speech_duration,
+                    g_config.vad.max_speech_duration)) {
         stt::pcLog(PcLogLevel::Error, "VAD", "Failed to initialize VAD");
         printf("  Model path: %s\n", vadModelPath.c_str());
         printf("  Please ensure the model file exists\n");
@@ -1124,6 +1143,7 @@ int main(int argc, char* argv[]) {
     }
     
     g_vad.setCallbacks(nullptr, onSpeechSegment);
+    configureAudioBuffer();
     g_preRollBuffer.setCapacitySeconds(kLiveRingBufferSeconds);
     {
         std::lock_guard<std::mutex> lock(g_mutex);

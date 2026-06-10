@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private String qnnRuntimeDir = "";
     private String lastError = "";
     private String lastLoggedStatus = "";
+    private boolean recognitionCacheEnabled = false;
     private volatile boolean stopping = false;
     private static MainActivity activeInstance = null;
 
@@ -279,6 +280,7 @@ public class MainActivity extends Activity {
             json.put("lastUpdatedMs", runtime.optLong("lastUpdatedMs", 0));
             json.put("totalRequests", runtime.optInt("totalRequests", 0));
             json.put("cacheHits", runtime.optInt("cacheHits", 0));
+            json.put("cacheEnabled", runtime.optBoolean("cacheEnabled", recognitionCacheEnabled));
             json.put("history", runtime.optJSONArray("history"));
             json.put("lastError", lastError);
             JSONArray logRows = new JSONArray();
@@ -380,6 +382,13 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setCacheEnabled(boolean enabled) {
+            recognitionCacheEnabled = enabled;
+            nativeSetRecognitionCacheEnabled(enabled);
+            addLog("Cache: " + (enabled ? "on" : "off"));
+        }
+
+        @JavascriptInterface
         public void clearLog() {
             synchronized (logLock) {
                 logs.clear();
@@ -393,4 +402,5 @@ public class MainActivity extends Activity {
     static native void nativeStop();
     static native String nativeGetStatus();
     static native String nativeGetRuntimeSnapshot();
+    static native void nativeSetRecognitionCacheEnabled(boolean enabled);
 }

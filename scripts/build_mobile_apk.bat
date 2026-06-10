@@ -1,8 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "USE_QNN=0"
-if /I "%~1"=="--qnn" set "USE_QNN=1"
+set "USE_QNN=1"
+if /I "%~1"=="--cpu" set "USE_QNN=0"
 
 set BUILD_TOOLS=D:\Android\Sdk\build-tools\36.1.0
 set PLATFORM=D:\Android\Sdk\platforms\android-34

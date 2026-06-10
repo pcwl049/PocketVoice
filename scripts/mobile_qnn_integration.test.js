@@ -55,7 +55,8 @@ assert(
   "Android CMake should build the native audio job queue",
 );
 assert(
-  buildScript.includes("--qnn") &&
+  buildScript.includes('set "USE_QNN=1"') &&
+    buildScript.includes("--cpu") &&
     buildScript.includes("-DSTT_USE_QNN=ON") &&
     buildScript.includes("%BUILD_DIR%\\lib\\arm64-v8a\\libQnn*.so") &&
     buildScript.includes("models\\sensevoice\\libmodel.so") &&
@@ -65,7 +66,7 @@ assert(
     buildScript.includes("*.flat") &&
     buildScript.includes("libc++_shared.so") &&
     buildScript.includes("STT_SKIP_QNN_LIBMODEL_REPAIR"),
-  "APK build script should support --qnn and package QNN runtime/model libraries",
+  "APK build script should default to QNN, allow CPU fallback, and package QNN runtime/model libraries",
 );
 assert(
   engineHeader.includes("SenseVoiceQnn"),
@@ -171,6 +172,7 @@ const uiApp = fs.existsSync(uiAppPath) ? fs.readFileSync(uiAppPath, "utf8") : ""
 assert(
   uiIndex.includes("VRChat ChatBox STT") &&
     uiIndex.includes("Voice Bridge") &&
+    uiIndex.includes("data-cache-toggle") &&
     uiIndex.includes("user-scalable=no") &&
     uiIndex.includes("maximum-scale=1") &&
     uiIndex.includes("styles.css") &&
@@ -193,6 +195,7 @@ assert(
 assert(
   uiApp.includes("window.STT") &&
     uiApp.includes("getSnapshot") &&
+    uiApp.includes("setCacheEnabled") &&
     uiApp.includes("setInterval") &&
     uiApp.includes("500") &&
     uiApp.includes('status === "stopped"') &&
@@ -201,6 +204,7 @@ assert(
 );
 assert(
   jniBridge.includes("ADSP_LIBRARY_PATH") &&
+    jniBridge.includes("nativeSetRecognitionCacheEnabled") &&
     jniBridge.includes("setenv"),
   "Native init should set ADSP_LIBRARY_PATH for QNN skel lookup",
 );

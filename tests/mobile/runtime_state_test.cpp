@@ -24,6 +24,11 @@ int main() {
     assert(snapshot.history[0].recognizeMs == 18);
     assert(snapshot.history[0].cacheHit == false);
 
+    auto disabledHit = state.findCached(audio.data(), audio.size());
+    assert(!disabledHit.hit);
+
+    state.setRecognitionCacheEnabled(true);
+    state.recordRecognition(audio.data(), audio.size(), 16000, 18, "hello");
     auto hit = state.findCached(audio.data(), audio.size());
     assert(hit.hit);
     assert(hit.text == "hello");
@@ -31,7 +36,7 @@ int main() {
     state.recordCacheHit(audio.data(), audio.size(), 16000, hit.text);
     snapshot = state.snapshot();
     assert(snapshot.cacheHits == 1);
-    assert(snapshot.history.size() == 2);
+    assert(snapshot.history.size() == 3);
     assert(snapshot.history[0].cacheHit == true);
     assert(snapshot.history[0].recognizeMs == 0);
 

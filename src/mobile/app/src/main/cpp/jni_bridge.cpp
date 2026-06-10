@@ -26,6 +26,7 @@ static std::string g_modelDir;
 static std::string g_nativeLibraryDir;
 static std::string g_lastError;
 static stt::RuntimeState g_runtimeState;
+static std::atomic<bool> g_recognitionCacheEnabled{false};
 
 static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server, const stt::AudioData& audio) {
     float duration = (float)audio.samples.size() / audio.sample_rate;
@@ -118,6 +119,7 @@ static std::string buildRuntimeSnapshotJson() {
     os << "\"lastUpdatedMs\":" << snapshot.lastUpdatedMs << ",";
     os << "\"totalRequests\":" << snapshot.totalRequests << ",";
     os << "\"cacheHits\":" << snapshot.cacheHits << ",";
+    os << "\"cacheEnabled\":" << (g_recognitionCacheEnabled.load() ? "true" : "false") << ",";
     os << "\"history\":[";
     for (size_t i = 0; i < snapshot.history.size(); ++i) {
         const auto& item = snapshot.history[i];
@@ -149,6 +151,7 @@ static void runEngine() {
     g_starting = true;
 
     stt::SttEngine engine;
+    g_runtimeState.setRecognitionCacheEnabled(g_recognitionCacheEnabled.load());
     if (!engine.init(g_modelDir, g_nativeLibraryDir)) {
         LOGE("Failed to init engine");
         setLastError("engine init failed");
@@ -256,6 +259,14 @@ JNIEXPORT jstring JNICALL
 Java_com_stt_mobile_MainActivity_nativeGetRuntimeSnapshot(JNIEnv* env, jobject /*thiz*/) {
     std::string json = buildRuntimeSnapshotJson();
     return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_com_stt_mobile_MainActivity_nativeSetRecognitionCacheEnabled(JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
+    const bool value = enabled == JNI_TRUE;
+    g_recognitionCacheEnabled = value;
+    g_runtimeState.setRecognitionCacheEnabled(value);
+    LOGI("Recognition cache %s", value ? "enabled" : "disabled");
 }
 
 }

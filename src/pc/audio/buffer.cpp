@@ -23,6 +23,10 @@ void AudioBuffer::setSeparator(const std::string& sep) {
     m_separator = sep;
 }
 
+void AudioBuffer::setInterSegmentSilence(float seconds) {
+    m_interSegmentSilence = std::max(0.0f, seconds);
+}
+
 void AudioBuffer::addSegment(const float* samples, size_t numSamples) {
     AudioSegment seg;
     seg.samples.assign(samples, samples + numSamples);
@@ -63,7 +67,12 @@ std::vector<float> AudioBuffer::getMergedAudio() {
     
     merged.reserve(totalSamples);
     
-    for (const auto& seg : m_segments) {
+    const size_t silenceSamples = static_cast<size_t>(m_interSegmentSilence * 16000.0f);
+    for (size_t i = 0; i < m_segments.size(); ++i) {
+        const auto& seg = m_segments[i];
+        if (i > 0 && silenceSamples > 0) {
+            merged.insert(merged.end(), silenceSamples, 0.0f);
+        }
         merged.insert(merged.end(), seg.samples.begin(), seg.samples.end());
     }
     

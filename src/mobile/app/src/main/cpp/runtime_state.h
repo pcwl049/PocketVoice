@@ -35,6 +35,7 @@ struct RuntimeSnapshot {
 class RuntimeState {
 public:
     CachedRecognition findCached(const float* samples, size_t numSamples);
+    void setRecognitionCacheEnabled(bool enabled);
     void recordRecognition(const float* samples, size_t numSamples, uint32_t sampleRate,
                            int recognizeMs, const std::string& text);
     void recordCacheHit(const float* samples, size_t numSamples, uint32_t sampleRate,
@@ -50,6 +51,7 @@ private:
     mutable std::mutex m_mutex;
     RuntimeSnapshot m_snapshot;
     std::unordered_map<uint64_t, std::string> m_cache;
+    bool m_cacheEnabled = false;
 };
 
 }

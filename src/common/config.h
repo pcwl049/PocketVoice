@@ -9,10 +9,11 @@ namespace stt {
 
 struct VadConfig {
     std::string model = "models/silero_vad.onnx";
-    float silence_threshold = 0.5f;
-    float speech_threshold = 0.1f;
+    float silence_threshold = 0.45f;
+    float speech_threshold = 0.45f;
+    float end_silence_duration = 0.9f;
     float min_speech_duration = 0.3f;
-    float max_speech_duration = 10.0f;
+    float max_speech_duration = 18.0f;
     int sample_rate = 16000;
 };
 
@@ -20,6 +21,7 @@ struct MergeConfig {
     float window = 1.5f;
     int max_segments = 5;
     float max_total_duration = 30.0f;
+    float inter_segment_silence = 0.15f;
     std::string separator = "，";
 };
 
@@ -150,11 +152,15 @@ inline Config loadConfig(const std::string& path) {
     
     // Top-level values
     cfg.vad.silence_threshold = parseInSectionFloat("vad", "silence_threshold", cfg.vad.silence_threshold);
+    cfg.vad.speech_threshold = parseInSectionFloat("vad", "speech_threshold", cfg.vad.silence_threshold);
+    cfg.vad.end_silence_duration = parseInSectionFloat("vad", "end_silence_duration", cfg.vad.end_silence_duration);
     cfg.vad.min_speech_duration = parseInSectionFloat("vad", "min_speech_duration", cfg.vad.min_speech_duration);
     cfg.vad.max_speech_duration = parseInSectionFloat("vad", "max_speech_duration", cfg.vad.max_speech_duration);
     
     cfg.merge.window = parseInSectionFloat("merge", "window", cfg.merge.window);
     cfg.merge.max_segments = parseInSectionInt("merge", "max_segments", cfg.merge.max_segments);
+    cfg.merge.max_total_duration = parseInSectionFloat("merge", "max_total_duration", cfg.merge.max_total_duration);
+    cfg.merge.inter_segment_silence = parseInSectionFloat("merge", "inter_segment_silence", cfg.merge.inter_segment_silence);
     cfg.merge.separator = parseInSectionString("merge", "separator", cfg.merge.separator);
     
     cfg.osc.listen.port = parseInSectionInt("listen", "port", cfg.osc.listen.port);

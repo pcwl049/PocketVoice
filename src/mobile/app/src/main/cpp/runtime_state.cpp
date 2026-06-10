@@ -36,9 +36,18 @@ CachedRecognition RuntimeState::findCached(const float* samples, size_t numSampl
     if (!samples || numSamples == 0) return {};
     const uint64_t key = hashAudio(samples, numSamples);
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cacheEnabled) return {};
     auto it = m_cache.find(key);
     if (it == m_cache.end()) return {};
     return {true, it->second};
+}
+
+void RuntimeState::setRecognitionCacheEnabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_cacheEnabled = enabled;
+    if (!enabled) {
+        m_cache.clear();
+    }
 }
 
 void RuntimeState::recordRecognition(const float* samples, size_t numSamples, uint32_t sampleRate,
@@ -52,7 +61,7 @@ void RuntimeState::recordRecognition(const float* samples, size_t numSamples, ui
     m_snapshot.lastUpdatedMs = updated;
     m_snapshot.totalRequests += 1;
 
-    if (!text.empty() && samples && numSamples > 0) {
+    if (m_cacheEnabled && !text.empty() && samples && numSamples > 0) {
         if (m_cache.size() >= kMaxCacheEntries) {
             m_cache.clear();
         }
@@ -85,6 +94,7 @@ void RuntimeState::reset() {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_snapshot = RuntimeSnapshot{};
     m_cache.clear();
+    m_cacheEnabled = false;
 }
 
 void RuntimeState::pushHistoryLocked(const RecognitionHistoryItem& item) {

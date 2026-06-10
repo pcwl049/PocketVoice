@@ -5,7 +5,8 @@
 namespace stt {
 
 namespace {
-constexpr const char* kVoiceTranscriptPrefix = "\xe2\x8c\x81 \xe5\xa3\xb0\xe9\x9f\xb3\xe8\xbd\xac\xe5\x86\x99\xef\xbc\x9a";
+constexpr const char* kVoiceTranscriptPrefix = "\xe2\x8c\x81 ";
+constexpr const char* kLegacyVoiceTranscriptPrefix = "\xe2\x8c\x81 \xe5\xa3\xb0\xe9\x9f\xb3\xe8\xbd\xac\xe5\x86\x99\xef\xbc\x9a";
 }
 
 void ChatBoxFormatter::setMaxChars(size_t maxChars) {
@@ -69,6 +70,10 @@ std::vector<std::string> ChatBoxFormatter::splitText(const std::string& text) co
 std::string ChatBoxFormatter::formatMessage(const std::string& text) const {
     if (text.empty()) return "";
     const std::string prefix = kVoiceTranscriptPrefix;
+    const std::string legacyPrefix = kLegacyVoiceTranscriptPrefix;
+    if (text.rfind(legacyPrefix, 0) == 0) {
+        return prefix + text.substr(legacyPrefix.size());
+    }
     if (text.rfind(prefix, 0) == 0) {
         return text;
     }

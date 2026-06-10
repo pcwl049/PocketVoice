@@ -20,7 +20,8 @@ public:
     Vad();
     ~Vad();
     
-    bool init(const std::string& modelPath, float threshold = 0.5f);
+    bool init(const std::string& modelPath, float speechThreshold = 0.45f, float endSilenceDuration = 0.9f,
+              float minSpeechDuration = 0.3f, float maxSpeechDuration = 18.0f);
     void setThreshold(float threshold);
     void setCallbacks(SpeechCallback speechCb, SegmentCallback segmentCb);
     
@@ -37,9 +38,10 @@ private:
     struct Impl;
     Impl* m_impl = nullptr;
     
-    float m_threshold = 0.5f;
+    float m_threshold = 0.45f;
+    float m_endSilenceDuration = 0.9f;
     float m_minSpeechDuration = 0.3f;
-    float m_maxSpeechDuration = 10.0f;
+    float m_maxSpeechDuration = 18.0f;
     int m_sampleRate = 16000;
     
     std::vector<float> m_buffer;
