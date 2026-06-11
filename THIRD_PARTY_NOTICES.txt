@@ -37,6 +37,14 @@ under the MIT License. When available, the full license is included as:
 
 - licenses/ONNXRUNTIME_LICENSE.txt
 
+FireRedVAD
+
+PocketVoice PC binaries may include FireRedVAD model files and FireRedVAD
+runtime frontend source. FireRedVAD is licensed under the Apache License,
+Version 2.0. When available, the full license is included as:
+
+- licenses/FIREREDVAD_LICENSE.txt
+
 Android SDK Platform Tools / ADB
 
 PocketVoice binary packages may include Android Debug Bridge files from Android

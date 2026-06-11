@@ -69,9 +69,16 @@ const protocol = fs.readFileSync(path.join(root, "src/common/protocol.h"), "utf8
 const pcClientHeader = fs.readFileSync(path.join(root, "src/pc/network/client.h"), "utf8");
 const pcClientSource = fs.readFileSync(path.join(root, "src/pc/network/client.cpp"), "utf8");
 const pcMain = fs.readFileSync(path.join(root, "src/pc/main.cpp"), "utf8");
+const configHeader = fs.readFileSync(path.join(root, "src/common/config.h"), "utf8");
 const wasapiHeader = fs.readFileSync(path.join(root, "src/pc/audio/wasapi_capture.h"), "utf8");
 const wasapiSource = fs.readFileSync(path.join(root, "src/pc/audio/wasapi_capture.cpp"), "utf8");
 const statusServerSource = fs.readFileSync(path.join(root, "src/pc/status_http_server.cpp"), "utf8");
+const fireredVadHeader = fs.existsSync(path.join(root, "src/pc/audio/firered_vad_ort.h"))
+  ? fs.readFileSync(path.join(root, "src/pc/audio/firered_vad_ort.h"), "utf8")
+  : "";
+const fireredVadSource = fs.existsSync(path.join(root, "src/pc/audio/firered_vad_ort.cpp"))
+  ? fs.readFileSync(path.join(root, "src/pc/audio/firered_vad_ort.cpp"), "utf8")
+  : "";
 const embeddedVadHeader = fs.existsSync(path.join(root, "src/pc/embedded_vad_model.h"))
   ? fs.readFileSync(path.join(root, "src/pc/embedded_vad_model.h"), "utf8")
   : "";
@@ -118,6 +125,30 @@ assert(
     pcMain.includes("embeddedSileroVadPath") &&
     !buildPc.includes("copy /Y \"%ROOT_DIR%\\models\\silero_vad.onnx\""),
   "PC build should embed the Silero VAD model instead of copying it as an external model file",
+);
+assert(
+  configHeader.includes('std::string backend = "firered"') &&
+    configHeader.includes('std::string model = "models/fireredvad"') &&
+    configHeader.includes('parseInSectionString("vad", "backend"') &&
+    pcMain.includes("resolveVadModelPath") &&
+    pcMain.includes("g_config.vad.backend") &&
+    fireredVadHeader.includes("FireRedVadOrt") &&
+    fireredVadSource.includes("OrtGetApiBase") &&
+    fireredVadSource.includes("fireredvad_stream_vad_with_cache.onnx") &&
+    fireredVadSource.includes("cmvn.ark") &&
+    buildPc.includes("firered_vad_ort.cpp") &&
+    buildPc.includes("firered_frontend\\fft.cpp") &&
+    buildPc.includes("build\\qnn-android\\headers"),
+    buildPc.includes("models\\fireredvad") &&
+    buildPc.includes("fireredvad_stream_vad_with_cache.onnx"),
+  "PC VAD should default to the FireRedVAD ONNX backend while keeping Silero as fallback",
+);
+assert(
+  buildPc.includes("PocketVoice - PC Build Script") &&
+    !buildPc.includes("VRChat STT - PC Build Script") &&
+    pcMain.includes("PocketVoice - Speech to ChatBox") &&
+    !pcMain.includes("VRChat STT - Speech to ChatBox"),
+  "PC user-facing console/build titles should use PocketVoice branding",
 );
 
 console.log("pc_wav_suite tests passed");

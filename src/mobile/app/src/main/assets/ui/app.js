@@ -108,6 +108,11 @@
     return `${ms}ms`;
   }
 
+  function formatBackend(snapshot) {
+    const value = snapshot.backend || "unknown";
+    return snapshot.cpuFallback ? `${value} CPU fallback` : value;
+  }
+
   function pulse(element) {
     element.classList.remove("changed");
     void element.offsetWidth;
@@ -155,7 +160,8 @@
     statusChip.classList.toggle("error", status === "error");
     statusLabel.textContent = statusText(status);
     serviceTitle.textContent = titleText(status);
-    backend.textContent = snapshot.backend || "unknown";
+    backend.textContent = formatBackend(snapshot);
+    backend.classList.toggle("cpu-fallback", !!snapshot.cpuFallback);
     modelDir.textContent = snapshot.modelDir || TEXT.noModel;
     port.textContent = `tcp:${snapshot.port || 27000}`;
     lastText.textContent = text || TEXT.waitingFirst;

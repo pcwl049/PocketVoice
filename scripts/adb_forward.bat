@@ -1,6 +1,6 @@
 @echo off
 echo ============================================================
-echo   VRChat STT - ADB Port Forward
+echo   PocketVoice - ADB Port Forward
 echo ============================================================
 echo.
 

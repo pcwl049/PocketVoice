@@ -7,7 +7,7 @@ set "WAV=%ROOT_DIR%\models\zipformer-ctc\test_wavs\0.wav"
 set "PORT=27000"
 
 echo ============================================================
-echo   Mobile STT smoke test
+echo   PocketVoice Android smoke test
 echo ============================================================
 echo.
 

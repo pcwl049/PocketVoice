@@ -18,7 +18,7 @@ if /I "%~2"=="--no-qnn" (
 )
 
 echo ============================================================
-echo   VRChat STT - Release Verification
+echo   PocketVoice - Release Verification
 echo ============================================================
 echo.
 

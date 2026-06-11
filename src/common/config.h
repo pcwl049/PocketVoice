@@ -8,9 +8,11 @@
 namespace stt {
 
 struct VadConfig {
-    std::string model = "models/silero_vad.onnx";
+    std::string backend = "firered";
+    std::string model = "models/fireredvad";
+    std::string fallback_model = "models/silero_vad.onnx";
     float silence_threshold = 0.45f;
-    float speech_threshold = 0.45f;
+    float speech_threshold = 0.4f;
     float end_silence_duration = 0.9f;
     float min_speech_duration = 0.3f;
     float max_speech_duration = 18.0f;
@@ -152,6 +154,9 @@ inline Config loadConfig(const std::string& path) {
     
     // Top-level values
     cfg.vad.silence_threshold = parseInSectionFloat("vad", "silence_threshold", cfg.vad.silence_threshold);
+    cfg.vad.backend = parseInSectionString("vad", "backend", cfg.vad.backend);
+    cfg.vad.model = parseInSectionString("vad", "model", cfg.vad.model);
+    cfg.vad.fallback_model = parseInSectionString("vad", "fallback_model", cfg.vad.fallback_model);
     cfg.vad.speech_threshold = parseInSectionFloat("vad", "speech_threshold", cfg.vad.silence_threshold);
     cfg.vad.end_silence_duration = parseInSectionFloat("vad", "end_silence_duration", cfg.vad.end_silence_duration);
     cfg.vad.min_speech_duration = parseInSectionFloat("vad", "min_speech_duration", cfg.vad.min_speech_duration);

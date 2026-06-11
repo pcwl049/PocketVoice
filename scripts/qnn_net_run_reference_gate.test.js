@@ -48,11 +48,17 @@ for (const text of [
   "vocab_major",
   "decodeGreedy",
   "STT_QNN_EXPECT_CONTAINS",
+  "STT_QNN_VTCM_MB",
   "decoded",
   "--report-only",
 ]) {
   assert(script.includes(text), `reference gate should include ${text}`);
 }
+
+assert(
+  script.includes("vtcm_mb: vtcmMb"),
+  "reference gate should feed a validated vtcm_mb value into the HTP config",
+);
 
 assert(
   script.includes("qnn-net-run reference gate failed: frame-major float logits greedy output is all blank"),

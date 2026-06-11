@@ -5,7 +5,7 @@ set "PAUSE_ON_EXIT=0"
 if /I "%~1"=="--pause" set "PAUSE_ON_EXIT=1"
 
 echo ============================================================
-echo   VRChat STT - PC Build Script (Direct MSVC)
+echo   PocketVoice - PC Build Script (Direct MSVC)
 echo ============================================================
 echo.
 
@@ -38,7 +38,7 @@ if not defined WEBVIEW2_DIR (
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 if not exist "%BUILD_DIR%\obj" mkdir "%BUILD_DIR%\obj"
 
-set "INCLUDE=%WEBVIEW2_DIR%\build\native\include;%SHERPA_DIR%\include;%SHERPA_DIR%\include\sherpa-onnx\c-api;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\include;%WIN_SDK%\Include\%WIN_SDK_VER%\ucrt;%WIN_SDK%\Include\%WIN_SDK_VER%\um;%WIN_SDK%\Include\%WIN_SDK_VER%\shared;%WIN_SDK%\Include\%WIN_SDK_VER%\winrt"
+set "INCLUDE=%WEBVIEW2_DIR%\build\native\include;%ROOT_DIR%\build\qnn-android\headers;%SHERPA_DIR%\include;%SHERPA_DIR%\include\sherpa-onnx\c-api;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\include;%WIN_SDK%\Include\%WIN_SDK_VER%\ucrt;%WIN_SDK%\Include\%WIN_SDK_VER%\um;%WIN_SDK%\Include\%WIN_SDK_VER%\shared;%WIN_SDK%\Include\%WIN_SDK_VER%\winrt"
 
 set "LIB=%WEBVIEW2_DIR%\build\native\x64;%SHERPA_DIR%\lib;%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\lib\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\ucrt\x64;%WIN_SDK%\Lib\%WIN_SDK_VER%\um\x64"
 
@@ -47,7 +47,15 @@ set CXXFLAGS=/std:c++20 /EHsc /W3 /O2 /utf-8 /c
 echo [1/5] Compiling common files...
 
 echo   - vad.cpp
-"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" "%ROOT_DIR%\src\pc\audio\vad.cpp" /Fo"%BUILD_DIR%\obj\vad.obj"
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" /I"%ROOT_DIR%\src\pc\audio\firered_frontend" "%ROOT_DIR%\src\pc\audio\vad.cpp" /Fo"%BUILD_DIR%\obj\vad.obj"
+if errorlevel 1 goto :error
+
+echo   - firered_vad_ort.cpp
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\common" /I"%ROOT_DIR%\src\pc" /I"%ROOT_DIR%\src\pc\audio\firered_frontend" "%ROOT_DIR%\src\pc\audio\firered_vad_ort.cpp" /Fo"%BUILD_DIR%\obj\firered_vad_ort.obj"
+if errorlevel 1 goto :error
+
+echo   - firered_frontend\fft.cpp
+"%CL_PATH%" %CXXFLAGS% /I"%ROOT_DIR%\src\pc\audio\firered_frontend" "%ROOT_DIR%\src\pc\audio\firered_frontend\fft.cpp" /Fo"%BUILD_DIR%\obj\firered_frontend_fft.obj"
 if errorlevel 1 goto :error
 
 echo   - buffer.cpp
@@ -138,9 +146,12 @@ copy /Y "%SHERPA_DIR%\bin\*.dll" "%BUILD_DIR%\" >nul
 echo.
 echo [4/5] Copying config...
 copy /Y "%ROOT_DIR%\config.json" "%BUILD_DIR%\" >nul
+if not exist "%BUILD_DIR%\models\fireredvad" mkdir "%BUILD_DIR%\models\fireredvad"
+copy /Y "%ROOT_DIR%\models\fireredvad\fireredvad_stream_vad_with_cache.onnx" "%BUILD_DIR%\models\fireredvad\" >nul
+copy /Y "%ROOT_DIR%\models\fireredvad\cmvn.ark" "%BUILD_DIR%\models\fireredvad\" >nul
 
 echo.
-echo [5/5] Embedded VAD model included in stt_pc.exe
+echo [5/5] FireRedVAD model copied; Silero fallback embedded in stt_pc.exe
 
 echo.
 echo ============================================================

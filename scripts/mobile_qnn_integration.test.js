@@ -59,6 +59,7 @@ assert(
     buildScript.includes("--cpu") &&
     buildScript.includes("-DSTT_USE_QNN=ON") &&
     buildScript.includes("%BUILD_DIR%\\lib\\arm64-v8a\\libQnn*.so") &&
+    buildScript.includes("sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict") &&
     buildScript.includes("models\\sensevoice\\libmodel.so") &&
     buildScript.includes("lib/arm64-v8a/libmodel.so") &&
     buildScript.includes("assets/ui/index.html") &&
@@ -78,8 +79,20 @@ assert(
     engineSource.includes("SherpaOnnxAcceptWaveformOffline") &&
     engineSource.includes("qnn_backend_lib") &&
     engineSource.includes("qnn_context_binary") &&
-    engineSource.includes("qnn_system_lib"),
+    engineSource.includes("qnn_system_lib") &&
+    engineSource.includes("STT_QNN_VTCM_MB") &&
+    engineSource.includes("qnn_vtcm_mb.txt") &&
+    engineSource.includes("vtcm_mb"),
   "STT engine should implement the SenseVoice QNN offline recognizer path",
+);
+assert(
+  engineSource.includes("readCpuFallbackThreads") &&
+    engineSource.includes("cpu_threads.txt") &&
+    engineSource.includes("STT_CPU_FALLBACK_THREADS") &&
+    engineSource.includes("return 2") &&
+    engineSource.includes("return 4") &&
+    engineSource.includes("CPU fallback threads"),
+  "STT engine should clamp CPU fallback recognizer threads to the 2-4 range",
 );
 assert(
   mainActivity.includes("\"sensevoice\"") &&
@@ -170,14 +183,15 @@ const uiIndex = fs.existsSync(uiIndexPath) ? fs.readFileSync(uiIndexPath, "utf8"
 const uiStyles = fs.existsSync(uiStylesPath) ? fs.readFileSync(uiStylesPath, "utf8") : "";
 const uiApp = fs.existsSync(uiAppPath) ? fs.readFileSync(uiAppPath, "utf8") : "";
 assert(
-  uiIndex.includes("VRChat ChatBox STT") &&
-    uiIndex.includes("Voice Bridge") &&
+  uiIndex.includes("PocketVoice") &&
+    !uiIndex.includes("VRChat ChatBox STT") &&
+    !uiIndex.includes("Voice Bridge") &&
     uiIndex.includes("data-cache-toggle") &&
     uiIndex.includes("user-scalable=no") &&
     uiIndex.includes("maximum-scale=1") &&
     uiIndex.includes("styles.css") &&
     uiIndex.includes("app.js"),
-  "WebView HTML should use the approved Voice Bridge copy, prevent viewport zoom, and load local CSS/JS",
+  "WebView HTML should use PocketVoice branding, prevent viewport zoom, and load local CSS/JS",
 );
 assert(
   uiStyles.includes("prefers-reduced-motion") &&
@@ -195,6 +209,8 @@ assert(
 assert(
   uiApp.includes("window.STT") &&
     uiApp.includes("getSnapshot") &&
+    uiApp.includes("formatBackend") &&
+    uiApp.includes("cpuFallback") &&
     uiApp.includes("setCacheEnabled") &&
     uiApp.includes("setInterval") &&
     uiApp.includes("500") &&
@@ -203,10 +219,12 @@ assert(
   "WebView JS should poll the STT bridge snapshot for status updates",
 );
 assert(
-  jniBridge.includes("ADSP_LIBRARY_PATH") &&
+    jniBridge.includes("ADSP_LIBRARY_PATH") &&
     jniBridge.includes("nativeSetRecognitionCacheEnabled") &&
+    jniBridge.includes("setBackendSnapshot") &&
+    jniBridge.includes("cpuFallback") &&
     jniBridge.includes("setenv"),
-  "Native init should set ADSP_LIBRARY_PATH for QNN skel lookup",
+  "Native init should set ADSP_LIBRARY_PATH and expose the actual recognizer backend in runtime snapshots",
 );
 assert(
   jniBridge.includes("audio_job_queue.h") &&
@@ -237,9 +255,11 @@ assert(
     pushQnnModelScript.includes("rm -f") &&
     pushQnnModelScript.includes("DEVICE_DIR%/model.bin") &&
     pushQnnModelScript.includes("DEVICE_DIR%/libmodel.so") &&
+    pushQnnModelScript.includes("STT_QNN_VTCM_MB") &&
+    pushQnnModelScript.includes("qnn_vtcm_mb.txt") &&
     pushQnnModelScript.includes("STT_SENSEVOICE_QNN_LIBMODEL") &&
     pushQnnModelScript.includes("STT_SENSEVOICE_QNN_LIBMODEL_FIRST"),
-  "SenseVoice QNN push script should support libmodel.so first-run context generation",
+  "SenseVoice QNN push script should support libmodel.so first-run context generation and push vtcm tuning",
 );
 
 const qnnSuite = fs.readFileSync(path.join(root, "scripts/test_qnn_pc_wav_suite.bat"), "utf8");

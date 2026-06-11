@@ -7,6 +7,8 @@ set "MODEL_DIR=%ROOT_DIR%\models\sensevoice"
 set "LIBMODEL_PATH=%ROOT_DIR%\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
 if not exist "%LIBMODEL_PATH%" set "LIBMODEL_PATH=%MODEL_DIR%\libmodel.so"
 if not "%STT_SENSEVOICE_QNN_LIBMODEL%"=="" set "LIBMODEL_PATH=%STT_SENSEVOICE_QNN_LIBMODEL%"
+set "QNN_VTCM_MB=%STT_QNN_VTCM_MB%"
+if "%QNN_VTCM_MB%"=="" set "QNN_VTCM_MB=16"
 set "DEVICE_DIR=/sdcard/Android/data/com.stt.mobile/files/models/sensevoice"
 
 echo ============================================================
@@ -47,6 +49,10 @@ if "%PUSH_LIBMODEL%"=="1" (
     if errorlevel 1 exit /b 1
 )
 "%ADB%" push "%MODEL_DIR%\tokens.txt" "%DEVICE_DIR%/"
+if errorlevel 1 exit /b 1
+"%ADB%" shell rm -f "%DEVICE_DIR%/qnn_vtcm_mb.txt"
+if errorlevel 1 exit /b 1
+"%ADB%" shell "echo %QNN_VTCM_MB% > %DEVICE_DIR%/qnn_vtcm_mb.txt"
 if errorlevel 1 exit /b 1
 
 echo.

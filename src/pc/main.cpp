@@ -516,6 +516,9 @@ static bool prepareAdbForward() {
 }
 
 static std::string resolveVadModelPath() {
+    if (g_config.vad.backend == "firered") {
+        return g_config.vad.model;
+    }
     try {
         auto path = stt::embeddedSileroVadPath();
         if (!path.empty()) {
@@ -528,6 +531,18 @@ static std::string resolveVadModelPath() {
     return g_config.vad.model;
 }
 
+static std::string resolveSileroFallbackVadModelPath() {
+    try {
+        auto path = stt::embeddedSileroVadPath();
+        if (!path.empty()) {
+            return path.string();
+        }
+    } catch (const std::exception& e) {
+        stt::pcLogf(PcLogLevel::Warning, "VAD", "Embedded fallback model unavailable: %s", e.what());
+    }
+    return g_config.vad.fallback_model.empty() ? "models/silero_vad.onnx" : g_config.vad.fallback_model;
+}
+
 void setColor(int color) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
 }
@@ -536,7 +551,7 @@ void printHeader() {
     setColor(11);
     printf("\n");
     printf("============================================================\n");
-    printf("       VRChat STT - Speech to ChatBox                      \n");
+    printf("       PocketVoice - Speech to ChatBox                     \n");
     printf("       SenseVoice-Large + QNN NPU                          \n");
     printf("============================================================\n");
     printf("\n");
@@ -752,7 +767,9 @@ static int runWavVadMode(const std::string& wavPath, bool simulateLivePadding) {
                     g_config.vad.speech_threshold,
                     g_config.vad.end_silence_duration,
                     g_config.vad.min_speech_duration,
-                    g_config.vad.max_speech_duration)) {
+                    g_config.vad.max_speech_duration,
+                    g_config.vad.backend,
+                    resolveSileroFallbackVadModelPath())) {
         printf("[Error] Failed to initialize VAD\n");
         printf("  Model path: %s\n", vadModelPath.c_str());
         return 1;
@@ -1132,10 +1149,12 @@ int main(int argc, char* argv[]) {
     
     std::string vadModelPath = resolveVadModelPath();
     if (!g_vad.init(vadModelPath,
-                    g_config.vad.speech_threshold,
-                    g_config.vad.end_silence_duration,
-                    g_config.vad.min_speech_duration,
-                    g_config.vad.max_speech_duration)) {
+                g_config.vad.speech_threshold,
+                g_config.vad.end_silence_duration,
+                g_config.vad.min_speech_duration,
+                g_config.vad.max_speech_duration,
+                g_config.vad.backend,
+                resolveSileroFallbackVadModelPath())) {
         stt::pcLog(PcLogLevel::Error, "VAD", "Failed to initialize VAD");
         printf("  Model path: %s\n", vadModelPath.c_str());
         printf("  Please ensure the model file exists\n");
