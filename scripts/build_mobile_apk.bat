@@ -65,7 +65,8 @@ if errorlevel 1 goto :error
 echo  Native libs...
 copy /Y "%SHERPA_LIB_DIR%\*.so" "%PROJECT_DIR%\src\main\jniLibs\arm64-v8a\" >nul
 if errorlevel 1 goto :error
-set "SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\models\sensevoice\libmodel.so"
+set "SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
+if not exist "%SENSEVOICE_QNN_LIBMODEL%" set "SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\models\sensevoice\libmodel.so"
 if "%USE_QNN%"=="1" if not "%STT_SENSEVOICE_QNN_LIBMODEL%"=="" set "SENSEVOICE_QNN_LIBMODEL=%STT_SENSEVOICE_QNN_LIBMODEL%"
 if "%USE_QNN%"=="1" if exist "%SENSEVOICE_QNN_LIBMODEL%" (
     if /I "%STT_SKIP_QNN_LIBMODEL_REPAIR%"=="1" (

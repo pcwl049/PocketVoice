@@ -13,7 +13,7 @@ function usage(exitCode) {
   const script = path.basename(process.argv[1]);
   console.log(`Usage: node scripts/${script} <wav-path> [host] [port]`);
   console.log("");
-  console.log("Sends a 16-bit mono WAV file to the Android STT server and prints the returned text.");
+  console.log("Sends a 16-bit mono WAV file to the PocketVoice Android service and prints the returned text.");
   console.log("Defaults: host=127.0.0.1 port=27000");
   process.exit(exitCode);
 }

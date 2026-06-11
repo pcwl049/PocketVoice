@@ -22,11 +22,17 @@ static std::atomic<bool> g_serverReady{false};
 static std::atomic<bool> g_starting{false};
 static std::mutex g_threadMutex;
 static std::mutex g_errorMutex;
+static std::mutex g_backendMutex;
 static std::string g_modelDir;
 static std::string g_nativeLibraryDir;
 static std::string g_lastError;
+static std::string g_backendName = "unknown";
 static stt::RuntimeState g_runtimeState;
 static std::atomic<bool> g_recognitionCacheEnabled{false};
+
+static bool isCpuFallbackBackend(const std::string& backendName) {
+    return backendName == "zipformer_ctc" || backendName == "paraformer";
+}
 
 static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server, const stt::AudioData& audio) {
     float duration = (float)audio.samples.size() / audio.sample_rate;
@@ -78,6 +84,16 @@ static void setLastError(const char* message) {
     g_lastError = message;
 }
 
+static void setBackendSnapshot(const std::string& backendName) {
+    std::lock_guard<std::mutex> lock(g_backendMutex);
+    g_backendName = backendName.empty() ? "unknown" : backendName;
+}
+
+static std::string getBackendSnapshot() {
+    std::lock_guard<std::mutex> lock(g_backendMutex);
+    return g_backendName;
+}
+
 static std::string getStatusString() {
     if (g_serverReady) return "running";
     if (g_starting) return "starting";
@@ -111,8 +127,11 @@ static std::string escapeJson(const std::string& value) {
 
 static std::string buildRuntimeSnapshotJson() {
     auto snapshot = g_runtimeState.snapshot();
+    std::string backendName = getBackendSnapshot();
     std::ostringstream os;
     os << "{";
+    os << "\"backend\":\"" << escapeJson(backendName) << "\",";
+    os << "\"cpuFallback\":" << (isCpuFallbackBackend(backendName) ? "true" : "false") << ",";
     os << "\"lastText\":\"" << escapeJson(snapshot.lastText) << "\",";
     os << "\"lastAudioMs\":" << snapshot.lastAudioMs << ",";
     os << "\"lastRecognizeMs\":" << snapshot.lastRecognizeMs << ",";
@@ -159,6 +178,7 @@ static void runEngine() {
         g_starting = false;
         return;
     }
+    setBackendSnapshot(engine.backendName());
     LOGI("Recognizer backend: %s", engine.backendName().c_str());
 
     stt::NetworkServer server;
@@ -224,6 +244,7 @@ Java_com_stt_mobile_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, jstri
         LOGI("ADSP_LIBRARY_PATH: %s", dspPath.c_str());
     }
     setLastError("");
+    setBackendSnapshot("unknown");
     LOGI("nativeInit: %s", g_modelDir.c_str());
     return JNI_TRUE;
 }

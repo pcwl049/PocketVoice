@@ -19,7 +19,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 public class SttForegroundService extends Service {
-    private static final String TAG = "STTService";
+    private static final String TAG = "PocketVoiceService";
     private static final String ACTION_START = "com.stt.mobile.START";
     private static final String ACTION_STOP = "com.stt.mobile.STOP";
     private static final String EXTRA_MODEL_DIR = "modelDir";
@@ -82,7 +82,7 @@ public class SttForegroundService extends Service {
             MainActivity.nativeInit(modelDir, runtimeDir);
             MainActivity.nativeStart();
             running = true;
-            Log.i(TAG, "Foreground STT server started");
+            Log.i(TAG, "PocketVoice foreground service started");
         }
         return START_STICKY;
     }
@@ -155,7 +155,7 @@ public class SttForegroundService extends Service {
         if (running) {
             MainActivity.nativeStop();
             running = false;
-            Log.i(TAG, "Foreground STT server stopped");
+            Log.i(TAG, "PocketVoice foreground service stopped");
         }
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();

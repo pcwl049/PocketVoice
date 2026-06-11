@@ -14,6 +14,11 @@ assert(
   "release verification should run the static regression tests",
 );
 assert(
+  script.includes("PocketVoice - Release Verification") &&
+    !script.includes("VRChat STT - Release Verification"),
+  "release verification title should use PocketVoice branding",
+);
+assert(
   script.includes("test_pc_wav_suite.bat"),
   "release verification should run the CPU fallback WAV suite",
 );

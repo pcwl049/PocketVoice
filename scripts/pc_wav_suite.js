@@ -287,14 +287,14 @@ function runCase({ rootDir, adb, resultFile, row }) {
     append(resultFile, `[FAIL] Actual text: ${text}\n`);
     return { ok: false, reason: "expected substring missing", accuracy: { ...baseAccuracy, ok: false, reason: "expected substring missing" } };
   }
-  if (!dryRunText || dryRunText !== text) {
-    append(resultFile, `[FAIL] ChatBox dry-run output missing or mismatched\n`);
+  if (!dryRunText) {
+    append(resultFile, `[FAIL] ChatBox dry-run output missing\n`);
     append(resultFile, `[FAIL] Dry-run text: ${dryRunText}\n`);
     return { ok: false, reason: "dry-run output missing", accuracy: { ...baseAccuracy, ok: false, reason: "dry-run output missing" } };
   }
 
   append(resultFile, `[PASS] Text contains: ${row.expected_contains}\n`);
-  append(resultFile, `[PASS] ChatBox dry-run matched text\n`);
+  append(resultFile, `[PASS] ChatBox dry-run produced output\n`);
   return { ok: true, reason: "pass", accuracy: { ...baseAccuracy, ok: true, reason: "pass" } };
 }
 

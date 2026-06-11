@@ -9,7 +9,7 @@ if /I "%~2"=="--pause" set "PAUSE_ON_EXIT=1"
 if /I "%~2"=="--check-only" set "CHECK_ONLY=1"
 
 echo ============================================================
-echo   VRChat STT - QNN Android Build Script
+echo   PocketVoice - QNN Android Build Script
 echo   Build sherpa-onnx with QNN support for Android
 echo ============================================================
 echo.

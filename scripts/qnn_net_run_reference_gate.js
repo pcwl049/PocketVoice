@@ -180,6 +180,8 @@ function floatLogitsStats(filePath, vocabSize, blankId = 0) {
 }
 
 function writeConfigFiles(outDir, soc, arch, socId, graphName) {
+  const parsedVtcmMb = Number(process.env.STT_QNN_VTCM_MB || 16);
+  const vtcmMb = Number.isFinite(parsedVtcmMb) && parsedVtcmMb > 0 ? parsedVtcmMb : 16;
   fs.mkdirSync(outDir, { recursive: true });
   const htpBackendExtensions = {
     backend_extensions: {
@@ -190,7 +192,7 @@ function writeConfigFiles(outDir, soc, arch, socId, graphName) {
   const htpConfig = {
     graphs: [
       {
-        vtcm_mb: 8,
+        vtcm_mb: vtcmMb,
         O: 3,
         graph_names: [graphName],
       },

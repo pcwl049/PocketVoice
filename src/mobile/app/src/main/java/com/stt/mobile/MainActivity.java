@@ -30,7 +30,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
-    private static final String TAG = "STTMobile";
+    private static final String TAG = "PocketVoice";
     private static final int PORT = 27000;
     private static final int MAX_LOG_ROWS = 200;
     private static final int APP_BACKGROUND = Color.rgb(18, 19, 19);
@@ -269,11 +269,13 @@ public class MainActivity extends Activity {
 
         JSONObject json = new JSONObject();
         try {
+            JSONObject runtime = new JSONObject(nativeGetRuntimeSnapshot());
             json.put("status", status);
-            json.put("backend", modelDir.contains("sensevoice") ? "sensevoice_qnn" : "zipformer_ctc");
+            json.put("backend", runtime.optString("backend",
+                    modelDir.contains("sensevoice") ? "sensevoice_qnn" : "unknown"));
+            json.put("cpuFallback", runtime.optBoolean("cpuFallback", false));
             json.put("modelDir", modelDir);
             json.put("port", PORT);
-            JSONObject runtime = new JSONObject(nativeGetRuntimeSnapshot());
             json.put("lastText", runtime.optString("lastText", ""));
             json.put("lastAudioMs", runtime.optInt("lastAudioMs", 0));
             json.put("lastRecognizeMs", runtime.optInt("lastRecognizeMs", 0));

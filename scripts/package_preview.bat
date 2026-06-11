@@ -60,6 +60,7 @@ copy /Y "%PC_BUILD%\config.json" "%PACKAGE_DIR%\" >nul
 if exist "%ROOT_DIR%\LICENSE" copy /Y "%ROOT_DIR%\LICENSE" "%LICENSE_DIR%\POCKETVOICE_LICENSE.txt" >nul
 if exist "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" copy /Y "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" "%PACKAGE_DIR%\THIRD_PARTY_NOTICES.txt" >nul
 if exist "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" copy /Y "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" "%LICENSE_DIR%\SHERPA_ONNX_LICENSE.txt" >nul
+if exist "%ROOT_DIR%\build\third_party\FireRedVAD2\LICENSE" copy /Y "%ROOT_DIR%\build\third_party\FireRedVAD2\LICENSE" "%LICENSE_DIR%\FIREREDVAD_LICENSE.txt" >nul
 if exist "%ROOT_DIR%\build\qairt-py310-venv\Lib\site-packages\onnxruntime\LICENSE" copy /Y "%ROOT_DIR%\build\qairt-py310-venv\Lib\site-packages\onnxruntime\LICENSE" "%LICENSE_DIR%\ONNXRUNTIME_LICENSE.txt" >nul
 if exist "%ROOT_DIR%\build\qairt-sdk\LICENSE.pdf" copy /Y "%ROOT_DIR%\build\qairt-sdk\LICENSE.pdf" "%LICENSE_DIR%\QUALCOMM_QAIRT_LICENSE.pdf" >nul
 if exist "%ROOT_DIR%\build\qairt-sdk\QNN_NOTICE.txt" copy /Y "%ROOT_DIR%\build\qairt-sdk\QNN_NOTICE.txt" "%LICENSE_DIR%\QUALCOMM_QNN_NOTICE.txt" >nul

@@ -334,6 +334,11 @@ h1 {
   font-size: 12px;
 }
 
+.pill.cpu-fallback {
+  background: rgba(215, 180, 115, 0.13);
+  color: #d8bd83;
+}
+
 .transcript {
   margin: 0;
   color: var(--text);

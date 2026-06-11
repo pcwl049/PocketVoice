@@ -66,15 +66,51 @@ static bool fileExists(const std::string& path) {
     return SherpaOnnxFileExists(path.c_str());
 }
 
-static bool writeQnnHtpConfig(const std::string& path) {
+static int readPositiveIntFile(const std::string& path) {
+    std::ifstream is(path, std::ios::binary);
+    if (!is) return 0;
+    int value = 0;
+    is >> value;
+    return value > 0 ? value : 0;
+}
+
+static int readQnnVtcmMb(const std::string& modelDir) {
+    int fileValue = readPositiveIntFile(modelDir + "/qnn_vtcm_mb.txt");
+    if (fileValue > 0) return fileValue;
+    const char* raw = std::getenv("STT_QNN_VTCM_MB");
+    if (!raw || !*raw) return 16;
+    int value = std::atoi(raw);
+    if (value <= 0) return 16;
+    return value;
+}
+
+static int clampCpuFallbackThreads(int value) {
+    if (value < 2) return 2;
+    if (value > 4) return 4;
+    return value;
+}
+
+static int readCpuFallbackThreads(const std::string& modelDir) {
+    int fileValue = readPositiveIntFile(modelDir + "/cpu_threads.txt");
+    if (fileValue > 0) return clampCpuFallbackThreads(fileValue);
+    const char* raw = std::getenv("STT_CPU_FALLBACK_THREADS");
+    if (!raw || !*raw) return 2;
+    int value = std::atoi(raw);
+    if (value <= 0) return 2;
+    return clampCpuFallbackThreads(value);
+}
+
+static bool writeQnnHtpConfig(const std::string& path, const std::string& modelDir) {
     std::ofstream os(path, std::ios::binary | std::ios::trunc);
     if (!os) return false;
+
+    int vtcmMb = readQnnVtcmMb(modelDir);
 
     os <<
         "{\n"
         "  \"graphs\": [\n"
         "    {\n"
-        "      \"vtcm_mb\": 8,\n"
+        "      \"vtcm_mb\": " << vtcmMb << ",\n"
         "      \"O\": 3,\n"
         "      \"graph_names\": [\"model\"]\n"
         "    }\n"
@@ -162,12 +198,13 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
             qnnSystemLib = "libQnnSystem.so";
         }
         std::string htpConfigPath = modelDir + "/htp_config.json";
-        if (writeQnnHtpConfig(htpConfigPath)) {
+        if (writeQnnHtpConfig(htpConfigPath, modelDir)) {
             setenv("SHERPA_ONNX_QNN_HTP_EXTENSIONS_LIB", htpExtensionsLib.c_str(), 1);
             setenv("SHERPA_ONNX_QNN_HTP_EXTENSIONS_CONFIG", htpConfigPath.c_str(), 1);
             unsetenv("SHERPA_ONNX_QNN_HTP_SIGNED_PD");
             LOGI("QNN HTP extensions lib: %s", htpExtensionsLib.c_str());
             LOGI("QNN HTP config: %s", htpConfigPath.c_str());
+            LOGI("QNN HTP vtcm_mb: %d", readQnnVtcmMb(modelDir));
         } else {
             LOGE("Failed to write QNN HTP config: %s", htpConfigPath.c_str());
         }
@@ -176,8 +213,10 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         memset(&config, 0, sizeof(config));
         config.feat_config.sample_rate = 16000;
         config.feat_config.feature_dim = 80;
-        if (hasSenseVoiceLib) {
+        if (fileExists(packagedSenseVoiceQnnLibPath)) {
             config.model_config.sense_voice.model = packagedSenseVoiceQnnLibPath.c_str();
+        } else if (hasSenseVoiceLib) {
+            config.model_config.sense_voice.model = senseVoiceQnnLibPath.c_str();
         }
         config.model_config.sense_voice.language = "auto";
         config.model_config.sense_voice.use_itn = 1;
@@ -191,7 +230,7 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         config.decoding_method = "greedy_search";
 
         LOGI("Selected backend: %s", m_backendName.c_str());
-        LOGI("QNN model lib: %s", hasSenseVoiceLib ? packagedSenseVoiceQnnLibPath.c_str() : "MISSING");
+        LOGI("QNN model lib: %s", fileExists(packagedSenseVoiceQnnLibPath) ? packagedSenseVoiceQnnLibPath.c_str() : (hasSenseVoiceLib ? senseVoiceQnnLibPath.c_str() : "MISSING"));
         LOGI("QNN backend lib: %s", qnnBackendLib.c_str());
         LOGI("QNN system lib: %s", qnnSystemLib.c_str());
         LOGI("QNN context binary: %s", hasSenseVoiceContext ? senseVoiceQnnPath.c_str() : "not present; init from libmodel.so");
@@ -240,8 +279,9 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         LOGI("Selected backend: %s", m_backendName.c_str());
     }
 
+    const int cpuFallbackThreads = readCpuFallbackThreads(modelDir);
     config.model_config.tokens = tokensPath.c_str();
-    config.model_config.num_threads = 4;
+    config.model_config.num_threads = cpuFallbackThreads;
     config.model_config.provider = "cpu";
     config.model_config.debug = 0;
     
@@ -251,6 +291,7 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     config.rule2_min_trailing_silence = 1.0f;
     config.rule3_min_utterance_length = 3.0f;
     
+    LOGI("CPU fallback threads: %d", cpuFallbackThreads);
     LOGI("Creating online recognizer...");
     m_impl->recognizer = SherpaOnnxCreateOnlineRecognizer(&config);
     

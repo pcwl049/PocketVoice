@@ -14,6 +14,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/../common
     ${SHERPA_ONNX_INCLUDE_DIR}
     ${SHERPA_ONNX_INCLUDE_DIR}/sherpa-onnx/c-api
+    ${CMAKE_SOURCE_DIR}/../../build/qnn-android/headers
+    ${CMAKE_SOURCE_DIR}/audio/firered_frontend
     ${WEBVIEW2_DIR}/build/native/include
     "$ENV{WindowsSdkDir}/Include/$ENV{WindowsSDKVersion}/winrt"
 )
@@ -30,6 +32,11 @@ set(PC_SOURCES
     main.cpp
     audio/vad.cpp
     audio/vad.h
+    audio/firered_vad_ort.cpp
+    audio/firered_vad_ort.h
+    audio/firered_frontend/fft.cpp
+    audio/firered_frontend/frontend/fft.h
+    audio/firered_frontend/frontend/fbank.h
     audio/buffer.cpp
     audio/buffer.h
     audio/pre_roll_buffer.cpp

@@ -21,7 +21,8 @@ public:
     ~Vad();
     
     bool init(const std::string& modelPath, float speechThreshold = 0.45f, float endSilenceDuration = 0.9f,
-              float minSpeechDuration = 0.3f, float maxSpeechDuration = 18.0f);
+              float minSpeechDuration = 0.3f, float maxSpeechDuration = 18.0f,
+              const std::string& backend = "silero", const std::string& fallbackModelPath = "");
     void setThreshold(float threshold);
     void setCallbacks(SpeechCallback speechCb, SegmentCallback segmentCb);
     
@@ -34,6 +35,7 @@ public:
     
 private:
     void detectSegment();
+    void updateSpeechState(bool isSpeech, const float* samples, size_t numSamples, float chunkDuration);
     
     struct Impl;
     Impl* m_impl = nullptr;
