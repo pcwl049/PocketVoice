@@ -15,7 +15,7 @@ PocketVoice 是给 VRChat ChatBox 用的语音转文字工具。
 
 ## 当前能力
 
-- Windows 端可选择录音设备，包括麦克风和系统播放回环。
+- Windows 端可选择录音设备。
 - PC 端负责收音、语音分段、USB 转发和 ChatBox 发送。
 - Android 端负责接收语音片段并在本机完成识别。
 
