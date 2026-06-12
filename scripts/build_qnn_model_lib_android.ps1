@@ -6,8 +6,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$qairt = 'G:\Program Files\qairt\2.45.0.260326'
-$ndk = Join-Path $root 'third_party\android-ndk-r27c'
+$qairt = $env:QNN_SDK_ROOT
+if (-not $qairt) {
+  $qairt = $env:QNN_SDK
+}
+if (-not $qairt) {
+  throw 'QNN SDK path not set. Set QNN_SDK_ROOT to your QAIRT/QNN SDK directory.'
+}
+$ndk = $env:ANDROID_NDK_ROOT
+if (-not $ndk) {
+  $ndk = $env:NDK_PATH
+}
+if (-not $ndk) {
+  $ndk = Join-Path $root 'third_party\android-ndk-r27c'
+}
 $convertDir = Join-Path $root "build\qnn-convert\$Variant"
 $build = Join-Path $root "build\qnn-model-lib-android\$Variant"
 $jni = Join-Path $build 'jni'

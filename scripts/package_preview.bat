@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "ROOT_DIR=%~dp0.."
+call "%~dp0env.bat"
 set "PC_BUILD=%ROOT_DIR%\build\pc"
 set "MOBILE_BUILD=%ROOT_DIR%\build\mobile-apk"
 set "RELEASE_ROOT=%ROOT_DIR%\build\release"
@@ -15,10 +15,8 @@ if /I "%~1"=="--adb-source" (
 )
 
 if not exist "%ADB_SOURCE%\adb.exe" (
-  if exist "D:\Project\PocketCast\tools\platform-tools\adb.exe" (
-    set "ADB_SOURCE=D:\Project\PocketCast\tools\platform-tools"
-  ) else if exist "D:\Project\PocketCast\tools\adb.exe" (
-    set "ADB_SOURCE=D:\Project\PocketCast\tools"
+  for %%A in ("%ADB%") do (
+    if exist "%%~fA" set "ADB_SOURCE=%%~dpA"
   )
 )
 

@@ -1,8 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
+call "%~dp0env.bat"
 set "STT_SENSEVOICE_QNN_LIBMODEL=%ROOT_DIR%\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
 set "STT_SKIP_QNN_LIBMODEL_REPAIR=1"
 set "STT_SENSEVOICE_QNN_LIBMODEL_FIRST=1"

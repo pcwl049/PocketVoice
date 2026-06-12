@@ -1,8 +1,7 @@
 @echo off
 setlocal
 
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "MODEL_DIR=%ROOT_DIR%\models\sensevoice"
 set "LIBMODEL_PATH=%ROOT_DIR%\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
 if not exist "%LIBMODEL_PATH%" set "LIBMODEL_PATH=%MODEL_DIR%\libmodel.so"

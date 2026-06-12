@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 
 echo ============================================================
 echo   QNN qnn-net-run reference gate

@@ -1,12 +1,8 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "BUILD_DIR=%ROOT_DIR%\build\pc-tests"
-set "VS_DIR=D:\Program Files\VScode"
-set "MSVC_VER=14.50.35717"
-set "WIN_SDK=C:\Program Files (x86)\Windows Kits\10"
-set "WIN_SDK_VER=10.0.26100.0"
 
 set "CL_PATH=%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\bin\Hostx64\x64\cl.exe"
 set "RC_PATH=%WIN_SDK%\bin\%WIN_SDK_VER%\x64\rc.exe"

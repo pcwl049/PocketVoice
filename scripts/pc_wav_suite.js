@@ -5,7 +5,8 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const DEFAULT_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_ADB = "D:\\Android\\Sdk\\platform-tools\\adb.exe";
+const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
+const DEFAULT_ADB = androidHome ? path.join(androidHome, "platform-tools", "adb.exe") : "adb";
 const APP = "com.stt.mobile/.MainActivity";
 const PACKAGE = "com.stt.mobile";
 const PORT = "27000";

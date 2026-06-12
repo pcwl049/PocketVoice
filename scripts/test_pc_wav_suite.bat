@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "EXPECTED=%ROOT_DIR%\test_audio\expected.tsv"
 
 if not "%~1"=="" (

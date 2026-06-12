@@ -7,8 +7,9 @@ const { spawnSync } = require("child_process");
 const { inferHtpArch } = require("./check_qnn_prereqs");
 
 const root = process.env.STT_ROOT || path.resolve(__dirname, "..");
-const adb = process.env.ADB || "D:\\Android\\Sdk\\platform-tools\\adb.exe";
-const qnnSdk = process.env.QNN_SDK_ROOT || "G:\\Program Files\\qairt\\2.45.0.260326";
+const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
+const adb = process.env.ADB || (androidHome ? path.join(androidHome, "platform-tools", "adb.exe") : "adb");
+const qnnSdk = process.env.QNN_SDK_ROOT || process.env.QNN_SDK || "";
 const sandbox = process.env.STT_QNN_NET_RUN_DIR || "/data/local/tmp/stt-qnn-run-gate";
 const args = process.argv.slice(2);
 const reportOnly = args.includes("--report-only");

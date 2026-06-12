@@ -4,11 +4,23 @@ setlocal enabledelayedexpansion
 set "USE_QNN=1"
 if /I "%~1"=="--cpu" set "USE_QNN=0"
 
-set BUILD_TOOLS=D:\Android\Sdk\build-tools\36.1.0
-set PLATFORM=D:\Android\Sdk\platforms\android-34
-set PROJECT_DIR=D:\Project\STT\src\mobile\app
-set OUTPUT_DIR=D:\Project\STT\build\mobile-apk
-set NDK_PATH=D:\Project\STT\third_party\android-ndk-r27c
+call "%~dp0env.bat"
+
+if "%BUILD_TOOLS%"=="" (
+    echo [ERROR] Android build-tools not found. Set ANDROID_HOME or ANDROID_SDK_ROOT.
+    exit /b 1
+)
+if "%PLATFORM%"=="" (
+    echo [ERROR] Android platform not found. Install an Android platform and set ANDROID_HOME or ANDROID_SDK_ROOT.
+    exit /b 1
+)
+if "%NDK_PATH%"=="" (
+    echo [ERROR] Android NDK not found. Set ANDROID_NDK_ROOT or place it under third_party\android-ndk-r27c.
+    exit /b 1
+)
+
+set "PROJECT_DIR=%ROOT_DIR%\src\mobile\app"
+set "OUTPUT_DIR=%ROOT_DIR%\build\mobile-apk"
 set TOOLCHAIN=%NDK_PATH%\build\cmake\android.toolchain.cmake
 set MAKE=%NDK_PATH%\prebuilt\windows-x86_64\bin\make.exe
 set BUILD_DIR=%OUTPUT_DIR%\apk
@@ -16,11 +28,11 @@ set NATIVE_BUILD_DIR=%OUTPUT_DIR%\native-cpu
 if not "%STT_MOBILE_NATIVE_BUILD_DIR%"=="" set "NATIVE_BUILD_DIR=%STT_MOBILE_NATIVE_BUILD_DIR%"
 set FINAL_APK=%OUTPUT_DIR%\app-signed.apk
 set "CMAKE_QNN_ARG=-DSTT_USE_QNN=OFF"
-set "SHERPA_LIB_DIR=D:\Project\STT\third_party\lib\android\arm64-v8a"
+set "SHERPA_LIB_DIR=%ROOT_DIR%\third_party\lib\android\arm64-v8a"
 
 if "%USE_QNN%"=="1" (
     set "CMAKE_QNN_ARG=-DSTT_USE_QNN=ON"
-    set "SHERPA_LIB_DIR=D:\Project\STT\third_party\lib\android\arm64-v8a-qnn"
+    set "SHERPA_LIB_DIR=%ROOT_DIR%\third_party\lib\android\arm64-v8a-qnn"
     if "%STT_MOBILE_NATIVE_BUILD_DIR%"=="" set "NATIVE_BUILD_DIR=%OUTPUT_DIR%\native-qnn"
     echo QNN build: ON
 )
@@ -65,16 +77,16 @@ if errorlevel 1 goto :error
 echo  Native libs...
 copy /Y "%SHERPA_LIB_DIR%\*.so" "%PROJECT_DIR%\src\main\jniLibs\arm64-v8a\" >nul
 if errorlevel 1 goto :error
-set "SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
-if not exist "%SENSEVOICE_QNN_LIBMODEL%" set "SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\models\sensevoice\libmodel.so"
+set "SENSEVOICE_QNN_LIBMODEL=%ROOT_DIR%\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
+if not exist "%SENSEVOICE_QNN_LIBMODEL%" set "SENSEVOICE_QNN_LIBMODEL=%ROOT_DIR%\models\sensevoice\libmodel.so"
 if "%USE_QNN%"=="1" if not "%STT_SENSEVOICE_QNN_LIBMODEL%"=="" set "SENSEVOICE_QNN_LIBMODEL=%STT_SENSEVOICE_QNN_LIBMODEL%"
 if "%USE_QNN%"=="1" if exist "%SENSEVOICE_QNN_LIBMODEL%" (
     if /I "%STT_SKIP_QNN_LIBMODEL_REPAIR%"=="1" (
         copy /Y "%SENSEVOICE_QNN_LIBMODEL%" "%PROJECT_DIR%\src\main\jniLibs\arm64-v8a\libmodel.so" >nul
         if errorlevel 1 goto :error
     ) else (
-        set "FIXED_SENSEVOICE_QNN_LIBMODEL=D:\Project\STT\build\qnn-model-fixed\libmodel.so"
-        node "D:\Project\STT\scripts\repair_qnn_libmodel_elf.js" "%SENSEVOICE_QNN_LIBMODEL%" "!FIXED_SENSEVOICE_QNN_LIBMODEL!"
+        set "FIXED_SENSEVOICE_QNN_LIBMODEL=%ROOT_DIR%\build\qnn-model-fixed\libmodel.so"
+        node "%ROOT_DIR%\scripts\repair_qnn_libmodel_elf.js" "%SENSEVOICE_QNN_LIBMODEL%" "!FIXED_SENSEVOICE_QNN_LIBMODEL!"
         if errorlevel 1 goto :error
         copy /Y "!FIXED_SENSEVOICE_QNN_LIBMODEL!" "%PROJECT_DIR%\src\main\jniLibs\arm64-v8a\libmodel.so" >nul
         if errorlevel 1 goto :error
