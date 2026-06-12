@@ -15,6 +15,7 @@ function usage(exitCode) {
   console.log("");
   console.log("Sends a 16-bit mono WAV file to the PocketVoice Android service and prints the returned text.");
   console.log("Defaults: host=127.0.0.1 port=27000");
+  console.log("Set STT_SEND_WAV_TIMEOUT_MS to override the default 30000ms response timeout.");
   process.exit(exitCode);
 }
 
@@ -143,6 +144,10 @@ async function main() {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`Invalid port: ${process.argv[4]}`);
   }
+  const timeoutMs = Number(process.env.STT_SEND_WAV_TIMEOUT_MS || "30000");
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`Invalid STT_SEND_WAV_TIMEOUT_MS: ${process.env.STT_SEND_WAV_TIMEOUT_MS}`);
+  }
 
   const wav = readWav16Mono(wavPath);
   const durationSeconds = wav.samples.length / wav.sampleRate;
@@ -157,8 +162,8 @@ async function main() {
     let finished = false;
     const timeout = setTimeout(() => {
       socket.destroy();
-      reject(new Error("Timed out waiting for text response"));
-    }, 30000);
+      reject(new Error(`Timed out waiting for text response after ${timeoutMs}ms`));
+    }, timeoutMs);
 
     function finish(result) {
       if (finished) return;
