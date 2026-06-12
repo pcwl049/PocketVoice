@@ -37,6 +37,7 @@ sherpa-onnx/
 models/
 third_party/
 src/mobile/app/src/main/jniLibs/
+test_audio/generated/
 
 # Local development notes stay off the public repository.
 docs/

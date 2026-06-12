@@ -1,0 +1,11 @@
+category	phrase	hotwords	notes
+vrchat	我先开麦试一下 ChatBox 有没有正常显示。	开麦,ChatBox	VRChat voice-to-chat workflow
+vrchat	你先闭麦，我这边在镜子房调全身追踪。	闭麦,镜子房,全身追踪	VRChat room and tracking terms
+vrchat	这个世界加载有点慢，我换个皮再进来。	世界加载,换皮	VRChat avatar/world terms
+vrchat	我现在只有半身追踪，动捕点位还没配好。	半身追踪,动捕	Tracking terms
+tech	这个版本先跑 QNN HTP，后面再看端侧推理。	QNN,HTP,端侧推理	Qualcomm mixed speech
+tech	Quest 单机进 VRChat，Booth 上买的模型还没改。	Quest,VRChat,Booth	English product names in Chinese speech
+tech	DeepSeek 和大模型最近太火了。	DeepSeek,大模型	Modern AI terms
+acg	哈基米哈基米，今天又破防了。	哈基米,破防了	Common meme terms
+acg	爷青回，原神牛逼，AWSL。	爷青回,原神牛逼,AWSL	ACG and internet slang
+acg	yyds 这个词现在还有人说吗。	yyds	Latin-letter slang
