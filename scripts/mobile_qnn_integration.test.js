@@ -12,6 +12,10 @@ const pushQnnModelScript = fs.readFileSync(
   path.join(root, "scripts/push_sensevoice_qnn_model.bat"),
   "utf8",
 );
+const pushQwen3ModelScript = fs.readFileSync(
+  path.join(root, "scripts/push_qwen3_asr_model.bat"),
+  "utf8",
+);
 const engineHeader = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/cpp/stt_engine.h"),
   "utf8",
@@ -70,8 +74,8 @@ assert(
   "APK build script should default to QNN, allow CPU fallback, and package QNN runtime/model libraries",
 );
 assert(
-  engineHeader.includes("SenseVoiceQnn"),
-  "BackendType should include SenseVoiceQnn",
+  engineHeader.includes("SenseVoiceQnn") && engineHeader.includes("Qwen3AsrCpu"),
+  "BackendType should include SenseVoiceQnn and Qwen3AsrCpu",
 );
 assert(
   engineSource.includes("sensevoice_qnn") &&
@@ -95,11 +99,40 @@ assert(
   "STT engine should clamp CPU fallback recognizer threads to the 2-4 range",
 );
 assert(
+  engineSource.includes("qwen3_asr_cpu") &&
+    engineSource.includes("conv_frontend.onnx") &&
+    engineSource.includes("qwen3_hotwords.txt") &&
+    engineSource.includes("config.feat_config.feature_dim = 128") &&
+    engineSource.includes("config.model_config.qwen3_asr.max_total_len = 512") &&
+    engineSource.includes("config.model_config.qwen3_asr.max_new_tokens = 128") &&
+    engineSource.includes("config.model_config.qwen3_asr.hotwords") &&
+    engineSource.includes("SherpaOnnxCreateOfflineRecognizer") &&
+    engineSource.includes("SherpaOnnxDecodeOfflineStream"),
+  "STT engine should implement the Qwen3-ASR CPU offline recognizer path",
+);
+assert(
   mainActivity.includes("\"sensevoice\"") &&
     mainActivity.includes("model.bin") &&
     mainActivity.includes("libmodel.so") &&
+    mainActivity.includes("\"qwen3-asr-0.6b\"") &&
+    mainActivity.includes("conv_frontend.onnx") &&
+    mainActivity.includes("qwen3_asr_cpu") &&
+    foregroundService.includes("\"qwen3-asr-0.6b\"") &&
+    foregroundService.includes("conv_frontend.onnx") &&
     mainActivity.includes("getApplicationInfo().nativeLibraryDir"),
-  "MainActivity should prefer the SenseVoice QNN model directory when a context or model library is present",
+  "MainActivity and foreground service should prefer Qwen3-ASR CPU, then SenseVoice QNN, before older CPU fallback models",
+);
+assert(
+  pushQwen3ModelScript.includes("sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25") &&
+    pushQwen3ModelScript.includes("STT_QWEN3_ASR_MODEL_DIR") &&
+    pushQwen3ModelScript.includes("STT_QWEN3_HOTWORDS_FILE") &&
+    pushQwen3ModelScript.includes("qwen3-asr-0.6b") &&
+    pushQwen3ModelScript.includes("conv_frontend.onnx") &&
+    pushQwen3ModelScript.includes("encoder.int8.onnx") &&
+    pushQwen3ModelScript.includes("decoder.int8.onnx") &&
+    pushQwen3ModelScript.includes("qwen3_hotwords.txt") &&
+    pushQwen3ModelScript.includes("cpu_threads.txt"),
+  "Qwen3-ASR push script should push model files, tokenizer, hotwords, and CPU thread config",
 );
 assert(
     mainActivity.includes("new WebView") &&

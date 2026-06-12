@@ -31,7 +31,7 @@ static stt::RuntimeState g_runtimeState;
 static std::atomic<bool> g_recognitionCacheEnabled{false};
 
 static bool isCpuFallbackBackend(const std::string& backendName) {
-    return backendName == "zipformer_ctc" || backendName == "paraformer";
+    return backendName == "zipformer_ctc" || backendName == "paraformer" || backendName == "qwen3_asr_cpu";
 }
 
 static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server, const stt::AudioData& audio) {

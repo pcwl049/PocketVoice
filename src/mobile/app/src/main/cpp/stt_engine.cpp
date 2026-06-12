@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <thread>
 #include <chrono>
 #ifndef STT_ENGINE_METADATA_ONLY
@@ -72,6 +73,16 @@ static int readPositiveIntFile(const std::string& path) {
     int value = 0;
     is >> value;
     return value > 0 ? value : 0;
+}
+
+static std::string readTextFile(const std::string& path) {
+    std::ifstream is(path, std::ios::binary);
+    if (!is) return "";
+    std::string value((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+    while (!value.empty() && (value.back() == '\n' || value.back() == '\r' || value.back() == ' ' || value.back() == '\t')) {
+        value.pop_back();
+    }
+    return value;
 }
 
 static int readQnnVtcmMb(const std::string& modelDir) {
@@ -154,6 +165,9 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     std::string tokensPath = modelDir + "/tokens.txt";
     std::string encoderPath = modelDir + "/encoder.int8.onnx";
     std::string decoderPath = modelDir + "/decoder.int8.onnx";
+    std::string qwen3ConvFrontendPath = modelDir + "/conv_frontend.onnx";
+    std::string qwen3TokenizerPath = modelDir + "/tokenizer";
+    std::string qwen3HotwordsPath = modelDir + "/qwen3_hotwords.txt";
     
     LOGI("Check files...");
     LOGI("  model dir: %s", modelDir.c_str());
@@ -164,12 +178,15 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     LOGI("  tokens.txt: %s", fileExists(tokensPath) ? "exists" : "MISSING");
     LOGI("  paraformer encoder.int8.onnx: %s", fileExists(encoderPath) ? "exists" : "MISSING");
     LOGI("  paraformer decoder.int8.onnx: %s", fileExists(decoderPath) ? "exists" : "MISSING");
+    LOGI("  qwen3 conv_frontend.onnx: %s", fileExists(qwen3ConvFrontendPath) ? "exists" : "MISSING");
+    LOGI("  qwen3 tokenizer: %s", fileExists(qwen3TokenizerPath) ? "exists" : "MISSING");
 
     bool hasSenseVoiceContext = fileExists(senseVoiceQnnPath);
     bool hasSenseVoiceLib = fileExists(senseVoiceQnnLibPath);
     bool useSenseVoiceQnn = (hasSenseVoiceContext || hasSenseVoiceLib) && fileExists(tokensPath);
     bool useZipformer = fileExists(zipformerPath) && fileExists(tokensPath) && fileExists(bbpePath);
     bool useParaformer = fileExists(encoderPath) && fileExists(decoderPath) && fileExists(tokensPath);
+    bool useQwen3Asr = fileExists(qwen3ConvFrontendPath) && fileExists(encoderPath) && fileExists(decoderPath) && fileExists(qwen3TokenizerPath);
 
 #if STT_USE_QNN
     if (useSenseVoiceQnn) {
@@ -250,11 +267,61 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     }
 #endif
 
+#if STT_USE_QNN
+    if (useQwen3Asr) {
+        m_backendType = BackendType::Qwen3AsrCpu;
+        m_backendName = "qwen3_asr_cpu";
+
+        std::string hotwords = readTextFile(qwen3HotwordsPath);
+        const int cpuFallbackThreads = readCpuFallbackThreads(modelDir);
+
+        SherpaOnnxOfflineRecognizerConfig config;
+        memset(&config, 0, sizeof(config));
+        config.feat_config.sample_rate = 16000;
+        config.feat_config.feature_dim = 128;
+        config.model_config.qwen3_asr.conv_frontend = qwen3ConvFrontendPath.c_str();
+        config.model_config.qwen3_asr.encoder = encoderPath.c_str();
+        config.model_config.qwen3_asr.decoder = decoderPath.c_str();
+        config.model_config.qwen3_asr.tokenizer = qwen3TokenizerPath.c_str();
+        config.model_config.qwen3_asr.max_total_len = 512;
+        config.model_config.qwen3_asr.max_new_tokens = 128;
+        config.model_config.qwen3_asr.temperature = 0.000001f;
+        config.model_config.qwen3_asr.top_p = 0.8f;
+        config.model_config.qwen3_asr.seed = 42;
+        config.model_config.qwen3_asr.hotwords = hotwords.empty() ? nullptr : hotwords.c_str();
+        config.model_config.num_threads = cpuFallbackThreads;
+        config.model_config.provider = "cpu";
+        config.model_config.debug = 0;
+        config.decoding_method = "greedy_search";
+
+        LOGI("Selected backend: %s", m_backendName.c_str());
+        LOGI("CPU fallback threads: %d", cpuFallbackThreads);
+        LOGI("Qwen3 hotwords: %s", hotwords.empty() ? "empty" : "configured");
+        LOGI("Creating offline Qwen3-ASR recognizer...");
+        m_impl->offlineRecognizer = SherpaOnnxCreateOfflineRecognizer(&config);
+        if (!m_impl->offlineRecognizer) {
+            LOGE("Failed to create offline Qwen3-ASR recognizer");
+            return false;
+        }
+        m_initialized = true;
+        LOGI("Initialized OK, backend=%s", m_backendName.c_str());
+        return true;
+    }
+#else
+    if (useQwen3Asr) {
+        LOGE("Qwen3-ASR requires the default QNN APK build because the CPU library bundle is older than the Qwen3 C API");
+        return false;
+    }
+#endif
+
     if (!useZipformer && !useParaformer) {
         LOGE("No supported model set found in %s", modelDir.c_str());
         LOGE("Expected SenseVoice QNN: model.bin/libmodel.so + tokens.txt");
         LOGE("Expected Zipformer CTC: model.int8.onnx + bbpe.model + tokens.txt");
         LOGE("Expected Paraformer fallback: encoder.int8.onnx + decoder.int8.onnx + tokens.txt");
+#if STT_USE_QNN
+        LOGE("Expected Qwen3-ASR CPU: conv_frontend.onnx + encoder.int8.onnx + decoder.int8.onnx + tokenizer/");
+#endif
         return false;
     }
     
@@ -338,6 +405,29 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         return result;
     }
 #endif
+
+    if (m_backendType == BackendType::Qwen3AsrCpu) {
+        if (!m_impl->offlineRecognizer) return result;
+
+        const SherpaOnnxOfflineStream* stream = SherpaOnnxCreateOfflineStream(m_impl->offlineRecognizer);
+        if (!stream) return result;
+
+        SherpaOnnxAcceptWaveformOffline(stream, 16000, samples, static_cast<int32_t>(numSamples));
+        SherpaOnnxDecodeOfflineStream(m_impl->offlineRecognizer, stream);
+        const SherpaOnnxOfflineRecognizerResult* res = SherpaOnnxGetOfflineStreamResult(stream);
+
+        if (res) {
+            result.success = true;
+            if (res->text) result.text = res->text;
+            LOGI("Result: \"%s\"", result.text.c_str());
+            LOGI("JSON: %s", res->json ? res->json : "null");
+            SherpaOnnxDestroyOfflineRecognizerResult(res);
+        } else {
+            LOGI("Result is null");
+        }
+        SherpaOnnxDestroyOfflineStream(stream);
+        return result;
+    }
 
     if (!m_impl->recognizer) return result;
     

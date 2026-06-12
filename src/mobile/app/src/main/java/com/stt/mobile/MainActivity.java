@@ -161,8 +161,15 @@ public class MainActivity extends Activity {
     private String resolveModelDir() {
         File root = new File(getApplicationContext().getExternalFilesDir(null), "models");
         File sensevoice = new File(root, "sensevoice");
+        File qwen3 = new File(root, "qwen3-asr-0.6b");
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
+        if (new File(qwen3, "conv_frontend.onnx").exists()
+                && new File(qwen3, "encoder.int8.onnx").exists()
+                && new File(qwen3, "decoder.int8.onnx").exists()
+                && new File(qwen3, "tokenizer").exists()) {
+            return qwen3.getAbsolutePath();
+        }
         if ((new File(sensevoice, "model.bin").exists()
                 || new File(sensevoice, "libmodel.so").exists())
                 && new File(sensevoice, "tokens.txt").exists()) {
@@ -271,8 +278,13 @@ public class MainActivity extends Activity {
         try {
             JSONObject runtime = new JSONObject(nativeGetRuntimeSnapshot());
             json.put("status", status);
-            json.put("backend", runtime.optString("backend",
-                    modelDir.contains("sensevoice") ? "sensevoice_qnn" : "unknown"));
+            String fallbackBackend = "unknown";
+            if (modelDir.contains("sensevoice")) {
+                fallbackBackend = "sensevoice_qnn";
+            } else if (modelDir.contains("qwen3-asr-0.6b")) {
+                fallbackBackend = "qwen3_asr_cpu";
+            }
+            json.put("backend", runtime.optString("backend", fallbackBackend));
             json.put("cpuFallback", runtime.optBoolean("cpuFallback", false));
             json.put("modelDir", modelDir);
             json.put("port", PORT);

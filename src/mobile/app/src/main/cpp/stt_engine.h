@@ -24,7 +24,8 @@ enum class BackendType {
     Unknown,
     Paraformer,
     ZipformerCtc,
-    SenseVoiceQnn
+    SenseVoiceQnn,
+    Qwen3AsrCpu
 };
 
 class SttEngine {
