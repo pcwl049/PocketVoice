@@ -16,6 +16,10 @@ const pushQwen3ModelScript = fs.readFileSync(
   path.join(root, "scripts/push_qwen3_asr_model.bat"),
   "utf8",
 );
+const mobileStressScript = fs.readFileSync(
+  path.join(root, "scripts/mobile_android_stress_test.js"),
+  "utf8",
+);
 const engineHeader = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/cpp/stt_engine.h"),
   "utf8",
@@ -133,6 +137,15 @@ assert(
     pushQwen3ModelScript.includes("qwen3_hotwords.txt") &&
     pushQwen3ModelScript.includes("cpu_threads.txt"),
   "Qwen3-ASR push script should push model files, tokenizer, hotwords, and CPU thread config",
+);
+assert(
+  mobileStressScript.includes("dumpsys") &&
+    mobileStressScript.includes("meminfo") &&
+    mobileStressScript.includes("com.stt.mobile") &&
+    mobileStressScript.includes("--iterations") &&
+    mobileStressScript.includes("--mem-every") &&
+    mobileStressScript.includes("build/test-results/mobile-android-stress-results.json"),
+  "Mobile stress test should send repeated wav requests and capture Android meminfo",
 );
 assert(
     mainActivity.includes("new WebView") &&
