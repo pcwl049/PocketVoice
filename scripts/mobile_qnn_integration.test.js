@@ -28,6 +28,14 @@ const engineSource = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/cpp/stt_engine.cpp"),
   "utf8",
 );
+const jniBridgeSource = fs.readFileSync(
+  path.join(root, "src/mobile/app/src/main/cpp/jni_bridge.cpp"),
+  "utf8",
+);
+const mobileCmake = fs.readFileSync(
+  path.join(root, "src/mobile/app/src/main/cpp/CMakeLists.txt"),
+  "utf8",
+);
 const jniBridge = fs.readFileSync(
   path.join(root, "src/mobile/app/src/main/cpp/jni_bridge.cpp"),
   "utf8",
@@ -146,6 +154,13 @@ assert(
     mobileStressScript.includes("--mem-every") &&
     mobileStressScript.includes("build/test-results/mobile-android-stress-results.json"),
   "Mobile stress test should send repeated wav requests and capture Android meminfo",
+);
+assert(
+  mobileCmake.includes("text_postprocess.cpp") &&
+    jniBridgeSource.includes("#include \"text_postprocess.h\"") &&
+    jniBridgeSource.includes("postprocessRecognizedText") &&
+    jniBridgeSource.includes("Postprocess:"),
+  "Android native bridge should postprocess recognized text before recording and sending it",
 );
 assert(
     mainActivity.includes("new WebView") &&

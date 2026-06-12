@@ -36,6 +36,8 @@ add_library(stt_native SHARED
     stt_engine.h
     network.cpp
     network.h
+    text_postprocess.cpp
+    text_postprocess.h
     runtime_state.cpp
     runtime_state.h
     jni_bridge.cpp
