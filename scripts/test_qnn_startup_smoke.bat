@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 set "ROOT_DIR=%~dp0.."
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
+call "%~dp0env.bat"
 set "PACKAGE=com.stt.mobile"
 set "APP=com.stt.mobile/.MainActivity"
 set "PORT=27000"

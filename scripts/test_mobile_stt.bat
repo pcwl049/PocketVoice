@@ -1,8 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
+call "%~dp0env.bat"
 set "WAV=%ROOT_DIR%\models\zipformer-ctc\test_wavs\0.wav"
 set "PORT=27000"
 

@@ -15,10 +15,8 @@ echo ============================================================
 echo.
 
 :: Configuration
-set "ROOT_DIR=%~dp0.."
+call "%~dp0env.bat"
 set "SHERPA_SRC=%ROOT_DIR%\third_party\sherpa-onnx-src"
-set "QNN_SDK=G:\Program Files\qairt\2.45.0.260326"
-set "NDK_PATH=%ROOT_DIR%\third_party\android-ndk-r27c"
 set "BUILD_DIR=%ROOT_DIR%\build\qnn-android"
 set "OUTPUT_DIR=%ROOT_DIR%\third_party\lib\android\arm64-v8a-qnn"
 set "LOG_DIR=%ROOT_DIR%\build\logs"

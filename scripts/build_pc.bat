@@ -9,13 +9,24 @@ echo   PocketVoice - PC Build Script (Direct MSVC)
 echo ============================================================
 echo.
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
+
+if "%VS_DIR%"=="" (
+  echo [Error] Visual Studio C++ tools were not found.
+  echo   Install Visual Studio Build Tools with C++ workload, or set VS_DIR.
+  goto :error
+)
+if "%MSVC_VER%"=="" (
+  echo [Error] MSVC toolset was not found under %VS_DIR%\VC\Tools\MSVC.
+  goto :error
+)
+if "%WIN_SDK_VER%"=="" (
+  echo [Error] Windows SDK was not found. Install Windows SDK, or set WIN_SDK and WIN_SDK_VER.
+  goto :error
+)
+
 set "BUILD_DIR=%ROOT_DIR%\build\pc"
 set "SHERPA_DIR=%ROOT_DIR%\third_party\sherpa-onnx-v1.12.39-win-x64-shared-MD-Release"
-set "VS_DIR=D:\Program Files\VScode"
-set "MSVC_VER=14.50.35717"
-set "WIN_SDK=C:\Program Files (x86)\Windows Kits\10"
-set "WIN_SDK_VER=10.0.26100.0"
 set "WEBVIEW2_PACKAGES=%USERPROFILE%\.nuget\packages\microsoft.web.webview2"
 
 set "CL_PATH=%VS_DIR%\VC\Tools\MSVC\%MSVC_VER%\bin\Hostx64\x64\cl.exe"

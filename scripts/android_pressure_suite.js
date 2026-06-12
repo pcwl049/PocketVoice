@@ -11,7 +11,8 @@ const {
 } = require("./pc_wav_suite");
 
 const DEFAULT_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_ADB = "D:\\Android\\Sdk\\platform-tools\\adb.exe";
+const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
+const DEFAULT_ADB = androidHome ? path.join(androidHome, "platform-tools", "adb.exe") : "adb";
 const PACKAGE = "com.stt.mobile";
 const APP = "com.stt.mobile/.MainActivity";
 const DEFAULT_PORT = 27000;

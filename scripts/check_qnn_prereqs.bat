@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 
 node "%ROOT_DIR%\scripts\check_qnn_prereqs.js"
 exit /b %ERRORLEVEL%

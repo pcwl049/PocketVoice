@@ -1,8 +1,7 @@
 @echo off
 setlocal
 
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "MODEL_DIR=%ROOT_DIR%\models\zipformer-ctc"
 set "DEVICE_DIR=/sdcard/Android/data/com.stt.mobile/files/models/zipformer-ctc"
 

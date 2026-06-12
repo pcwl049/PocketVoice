@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "MODEL_NAME=sherpa-onnx-qnn-10-seconds-sense-voice-zh-en-ja-ko-yue-2025-09-09-int8-android-aarch64"
 set "URL=https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models-qnn/%MODEL_NAME%.tar.bz2"
 set "DOWNLOAD_DIR=%ROOT_DIR%\build\downloads"

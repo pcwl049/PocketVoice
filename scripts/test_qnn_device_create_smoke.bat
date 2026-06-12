@@ -1,10 +1,15 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=%~dp0.."
-set "QNN_SDK=G:\Program Files\qairt\2.45.0.260326"
-set "NDK_PATH=%ROOT_DIR%\third_party\android-ndk-r27c"
-set "ADB=D:\Android\Sdk\platform-tools\adb.exe"
+call "%~dp0env.bat"
+if "%QNN_SDK%"=="" (
+  echo [ERROR] QNN SDK not found. Set QNN_SDK_ROOT.
+  exit /b 1
+)
+if "%NDK_PATH%"=="" (
+  echo [ERROR] Android NDK not found. Set ANDROID_NDK_ROOT.
+  exit /b 1
+)
 set "OUT_DIR=%ROOT_DIR%\build\qnn-device-create-smoke"
 set "TARGET_DIR=/data/local/tmp/stt_qnn_device_smoke"
 set "CXX=%NDK_PATH%\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android35-clang++.cmd"

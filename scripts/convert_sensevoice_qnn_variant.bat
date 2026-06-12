@@ -1,8 +1,8 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=%~dp0.."
-set "QAIRT_ROOT=G:\Program Files\qairt\2.45.0.260326"
+call "%~dp0env.bat"
+set "QAIRT_ROOT=%QNN_SDK_ROOT%"
 set "PYTHON=%ROOT_DIR%\build\qairt-py310-venv\Scripts\python.exe"
 set "ONNX_MODEL=%ROOT_DIR%\build\downloads\sensevoice-small-src\model-10-seconds-fixed-prompt-expanded.onnx"
 set "INPUT_LIST=%ROOT_DIR%\build\qnn-calibration\fixed-prompt-expanded-input-list.txt"
@@ -31,6 +31,10 @@ if /I "%~1"=="int8-preserve-layout-bias32" (
   exit /b 2
 )
 
+if "%QAIRT_ROOT%"=="" (
+  echo [Error] QAIRT root not set. Set QNN_SDK_ROOT to your QAIRT/QNN SDK directory.
+  exit /b 1
+)
 if not exist "%QAIRT_ROOT%" (
   echo [Error] QAIRT root not found: %QAIRT_ROOT%
   exit /b 1

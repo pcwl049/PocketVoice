@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "ROOT_DIR=D:\Project\STT"
+call "%~dp0env.bat"
 set "STT_QNN_REFERENCE_MODEL=%ROOT_DIR%\build\qnn-model-lib-android\sensevoice-act16-fixed-prompt-expanded-preserve-layout-restrict\libs\arm64-v8a\libmodel.so"
 set "STT_QNN_GRAPH_NAME=model"
 set "STT_QNN_INPUT_LIST=x:=input0.float.raw"
