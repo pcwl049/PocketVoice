@@ -3046,3 +3046,55 @@ ignoring both `quant_overrides` and `model.cpp` definitions. The stored
 GraphInfo structs are NOT stale — they already reflect the HTP-overridden values.
 
 **Decision**: Proceed to Gate B (Context Binary / Converter Custom IO / Float32).
+
+## Step 23: Gate B Route 2 — Float32 APP_WRITE KV Cache (`--preserve_io datatype`)
+
+**Goal**: Test whether `--preserve_io datatype` for cache_key/cache_value forces
+HTP to accept float32 APP_WRITE inputs, bypassing the quantization scale problem.
+
+**Method**:
+1. Modified `convert_qwen3_decoder_single_model_kv_override.py` to add
+   `--preserve_io datatype cache_key_0 ... cache_value_27` to the converter
+   command (56 tensors total).
+2. Re-converted ONNX → model.cpp → libmodel.so with the new variant name
+   `qwen3-decoder-fullkv-act16-single-model-f32kv-i32`.
+3. Verified model_net.json: cache_key/cache_value have `data_type=562`
+   (`QNN_DATATYPE_FLOAT_32`). key_delta/value_delta remain `data_type=1046`
+   (UFIXED_POINT_16). audio_features, logits remain quantized int16.
+4. Built libmodel.so, APK, deployed to device.
+
+**Results**:
+
+HTP graphFinalize **overrides both data type and quantization scale** for
+cache_key/cache_value APP_WRITE inputs:
+
+```
+Converter output (model_net.json):
+  cache_key_0: data_type=562 (FLOAT_32), no quant_params
+  cache_value_0: data_type=562 (FLOAT_32), no quant_params
+
+HTP runtime after graphFinalize (device):
+  cache_key_0: dtype=1046 (UFIXED_POINT_16), scale=1.5259021824e-09, offset=0
+  cache_value_0: dtype=1046 (UFIXED_POINT_16), scale=1.5259021824e-09, offset=0
+```
+
+HTP ignores `--preserve_io datatype` completely. It forces APP_WRITE input
+tensors to UFIXED_POINT_16 with its own internally derived scale, regardless
+of the converter-specified data type.
+
+Smoke test: PASSED (identical to previous)
+KV Influence Probe: FAILED (diff=0.00, identical to previous)
+
+**Conclusion**: `--preserve_io datatype` is **ineffective** for APP_WRITE inputs
+on HTP. HTP graphFinalize unilaterally converts float32 APP_WRITE inputs to
+quantized int16 with its own scale. This is a fundamental HTP runtime behavior
+that cannot be overridden from the converter side.
+
+**Decision**: `--preserve_io datatype` route failed. Next options:
+1. Route 3: `--custom_io` YAML with QuantParam (low confidence given HTP behavior)
+2. Gate C: Raw buffer diagnostic probe (confirm APP_WRITE buffer connectivity)
+3. Investigate whether HTP provides any API to control APP_WRITE input encoding
+   after graphFinalize (e.g., HTP config extensions, graph config options)
+4. Consider whether the problem is solvable within QNN/HTP or requires a
+   fundamentally different approach (e.g., CPU fallback for decoder, or
+   QNN float16 math path instead of quantized path)

@@ -32,6 +32,7 @@ Gate 13: prewindow decoder (Slice removed)  PASSED (W=128, Slice nodes eliminate
 Gate 14: KV influence probe (prewindow)     FAILED (HTP overrides cache_key scale to 1.53e-9, KV data invisible)
 Gate 15: non-zero calibration data fix       FAILED (HTP graphFinalize ignores quant_overrides regardless)
 Gate A: runtime encoding audit               FAILED (Path1+Path2 both confirm scale=1.53e-9, HTP overrides at finalize)
+Gate B: --preserve_io datatype float32       FAILED (HTP overrides dtype from FLOAT32 to UFIXED16+scale=1.53e-9)
 ```
 
 Current conclusion (updated Step 21):
