@@ -2692,3 +2692,357 @@ The remaining problem is elsewhere. Possible next directions:
 Gate 9: KV cache quantization override  PASSED (model_net.json verified)
         Real-audio E2E with KV fix      FAILED (garbage, but different garbage)
 ```
+
+## Step 20: Position Encoding Fix + Three-Gate Decoder Diagnosis
+
+**Date**: 2026-06-14
+
+### 20.1 Position Encoding Fix (0-indexed)
+
+Previous code used `position = currentStep + 1` (1-indexed), meaning the first
+decode step had `position_scalar=1`, which unmasked past KV even though no past
+KV existed. This was inconsistent with sherpa-onnx's `cache_position` which is
+0-indexed: `[0, 1, 2, ...]`.
+
+Fix: `position = currentStep` (0-indexed).
+
+Semantics of `position_scalar` in QNN model (from trace_decoder_critical.py):
+
+```text
+position_scalar > 0  →  past KV mask = 0   (unmasked, all past positions visible)
+position_scalar <= 0  →  past KV mask = -10000 (masked, all past positions hidden)
+```
+
+After fix:
+- Step 0: position_scalar=0 → past KV masked (correct: no past KV)
+- Step 1: position_scalar=1 → past KV unmasked (correct: 1 past position)
+- Step 2: position_scalar=2 → past KV unmasked (correct: 2+ past positions)
+
+### 20.2 Smoke Test Reference (position 0-indexed)
+
+Measured on device after position fix:
+
+```text
+Step 1: token=0, position=0
+  argmax=0,      logits_sum=-239319.69, cache_nonzero=56463
+
+Step 2: token=1, position=1
+  argmax=660,    logits_sum=-551386.00, cache_nonzero=113738
+
+Step 3: token=2, position=2
+  argmax=12982,  logits_sum=-398292.22, cache_nonzero=171034
+```
+
+Smoke test PASSED with strict reference (argmax exact, logits_sum tolerance 500).
+
+### 20.3 Gate 1: KV Influence Probe — FAILED
+
+**Execution command**: automatic during app init after smoke test.
+
+**Result**:
+
+```text
+Run A (zero KV):    logits_sum=-290501.69
+Run B (non-zero KV): logits_sum=-290501.69
+diff=0.00 (threshold=1.0)
+=== KV Influence Probe FAILED ===
+```
+
+**KV probe parameters**:
+- input_ids=0, audio_features=zero, attention_mask=1
+- position_scalar=1 (past KV unmasked)
+- Run A: all cache_key/cache_value = zeros
+- Run B: cache_key = sin(pattern) * 10.0, cache_value = cos(pattern) * 0.8
+  (value range limited to [-0.8, 0.8] to stay within cache_value quantization range [-1, 1])
+
+**Conclusion**: Non-zero KV inputs have ZERO effect on decoder logits.
+This proves the model does not read KV cache data from the graph inputs,
+or the internal Slice only reads positions that are always zero.
+
+### 20.4 Gate 2: First-Step Reference Alignment — PARTIAL PASS
+
+Real-audio E2E diagnostic logs (first 6 steps of prompt prefill):
+
+```text
+Step 0: position_scalar=0, rope_emb=[0,0,...], cache_key_0_win nonzero=0/131072
+  argmax=13820, logits_sum=-338551.38, key_delta_0_absmax=330.67
+
+Step 1: position_scalar=1, rope_emb=[1.0, 0.806, 0.649, 0.523, 0.422]
+  cache_key_0_win nonzero=1016/131072, min=-217.34, max=330.67
+  argmax=1794, logits_sum=-450902.81
+
+Step 2: position_scalar=2, rope_emb=[2.0, 1.612, 1.299, 1.047, 0.843]
+  cache_key_0_win nonzero=2037/131072
+  argmax=234, logits_sum=-540764.38
+
+Step 3: position_scalar=3, input_ids=151645 (<|im_end|>)
+  argmax=243, logits_sum=-377144.78
+
+Step 4: position_scalar=4, input_ids=198 (\n)
+  argmax=234, logits_sum=-558996.56
+
+Step 5: position_scalar=5, input_ids=151644 (<|im_start|>)
+  argmax=101542, logits_sum=-559817.81
+```
+
+Observations:
+- position_scalar correctly starts at 0 and increments
+- rope_emb correctly computed (position * inv_freq)
+- KV cache correctly grows (nonzero count increases each step)
+- key_delta_0 non-zero (model produces KV output)
+- Prompt token IDs match expected Qwen3-ASR prompt structure
+
+### 20.5 Gate 3: Multi-Step KV Alignment — DEGENERATE
+
+**Execution command**:
+
+```powershell
+scripts\build_mobile_apk.bat
+scripts\adb_forward.bat
+build\pc\stt_pc.exe --wav models\zipformer-ctc\test_wavs\0.wav
+adb logcat -s Qwen3Qnn STT_Engine
+```
+
+**Repetition loop evidence** (token frequency in 207 decode steps):
+
+```text
+argmax=124463:  106 occurrences (51%)
+argmax=6571:     26 occurrences
+argmax=40820:    23 occurrences
+argmax=399:       8 occurrences
+argmax=4102:      3 occurrences
+argmax=234:       3 occurrences
+```
+
+The model enters a repetition loop starting around step 174, continuously
+generating token 124463. This is a classic symptom of insufficient attention
+context — the model cannot see enough past tokens to generate coherently.
+
+**Total decode**: 207 steps (80 prompt + 127 generated), hit max_new_tokens=128.
+
+**Final result**: garbage text with Thai/Chinese/random character mix.
+
+### 20.6 Root Cause: kv_ends=1 in ONNX Model
+
+**Superseded by Step 21.** This was a valid intermediate hypothesis from the
+Slice-based model trace. Step 21 later tested the prewindow decoder with Slice
+nodes removed and found the same KV influence failure, so `kv_ends=1` is no
+longer treated as the current root cause.
+
+Evidence from trace scripts (trace_decoder_critical.py, trace_decoder_slice.py):
+
+```text
+The QNN model's internal Slice uses kv_ends as an initializer constant:
+  kv_ends = [1]
+
+Slice(cache_key_N, starts=0, ends=kv_ends=1, axes=1)
+→ only takes cache[:, 0:1, :, :] = 1 position from the KV cache
+```
+
+This means regardless of W=128 window size, the model only looks at
+position 0 of the KV cache. The remaining 127 positions are ignored.
+
+**Why smoke test passes**: With trivial inputs (token=0,1,2, zero audio),
+even 1 past position produces different logits per step. The smoke test
+doesn't require coherent multi-step generation.
+
+**Why KV probe fails**: The model's internal Slice reads position 0 of
+the KV cache. In both Run A (zeros) and Run B (non-zero), position 0
+may be quantized to the same value, or the Slice output is not connected
+to the attention path in a way that affects logits.
+
+**Why real-audio E2E fails**: With 80+ prompt tokens and real audio,
+the model needs to attend to all past positions. With only 1 visible
+past position, attention cannot gather enough context → repetition loop
+→ garbage output.
+
+### 20.7 Gate Status Update
+
+```text
+Gate 11: position encoding fix (0-indexed)  PASSED
+Gate 12: real-audio E2E with position fix   FAILED (repetition loop)
+Gate 1:  KV influence probe                 FAILED (KV has no effect on logits)
+Gate 2:  first-step reference alignment      PARTIAL (inputs correct, but model can't use KV)
+Gate 3:  multi-step KV alignment             DEGENERATE (repetition loop at step 174+)
+```
+
+### 20.8 Next Steps
+
+The `kv_ends=1` constant is baked into the ONNX model at export time.
+This is a model architecture issue, not a runtime parameter issue.
+
+Options:
+1. Re-export the ONNX model with dynamic kv_ends (or kv_ends=W=128)
+2. Modify the QNN graph after loading to replace the Slice node
+3. Use a different model export that passes full KV cache context
+   (like the sherpa-onnx decoder with cache_position mechanism)
+
+## Step 21: HTP Quantization Scale Override Investigation
+
+**Date**: 2026-06-15
+
+### 21.1 Background
+
+The prewindow decoder (W=128, Slice nodes removed) was deployed to the phone.
+Smoke test passes (3-step cumulative KV), but KV Influence Probe fails:
+logits_sum is identical whether KV is zero or non-zero.
+
+### 21.2 Key Discovery: HTP graphFinalize Overrides Input Tensor Scale
+
+The `quant_overrides_v4.json` and `model.cpp` both define:
+
+```text
+cache_key_0: scale = 0.015625 (min=-512, max=512, bitwidth=16)
+cache_value_0: scale = 3.0518e-05 (min=-1, max=1, bitwidth=16)
+```
+
+model_net.json confirms `is_overridden=True, scale=0.015625`.
+
+But HTP runtime reports after graphFinalize:
+
+```text
+cache_key_0: scale = 1.5259021824e-09
+cache_value_0: scale = 1.5259021824e-09
+```
+
+**HTP graphFinalize ignores quantization_overrides for APP_WRITE input tensors.**
+It re-derives all quantization scales based on internal weight scales,
+overriding whatever model.cpp or quant_overrides specify.
+
+### 21.3 Why KV Data Has No Effect
+
+scale=1.53e-9 corresponds to quantization range [-0.0001, 0.0001].
+Real KV data (key_absmax=330) is quantized to 0 by this scale.
+Therefore, all KV inputs appear as zero to the model, regardless of
+what the host writes.
+
+### 21.4 Attempted Fix: Non-Zero Calibration Data
+
+Generated calibration data with real KV values (via ORT inference):
+
+```text
+Layer  0: key max_abs=  427.59  value max_abs=  0.89
+Layer 13: key max_abs=   22.64  value max_abs=  5.07
+Layer 27: key max_abs=   34.37  value max_abs= 31.56
+```
+
+Also expanded cache_value range from [-1,1] to [-64,64] (scale=0.001953125).
+
+Re-converted and re-built libmodel.so. Result:
+
+```text
+model_net.json: cache_key_0 is_overridden=True, scale=0.015625  (correct)
+HTP runtime:    cache_key_0 scale=1.5259021824e-09              (still wrong)
+KV Influence Probe: FAILED (diff=0.00)
+```
+
+**Non-zero calibration data does not fix the problem.**
+HTP graphFinalize overrides the scale regardless.
+
+### 21.5 Attempted Fix: Re-deploy libmodel.so
+
+Initially suspected stale file on phone. Deleted and re-pushed
+the latest libmodel.so. Result: same scale=1.53e-9, same probe failure.
+
+The issue is not deployment; it is HTP runtime behavior.
+
+### 21.6 Artifacts
+
+```text
+Calibration script:     G:\STTModels\qnn-work\generate_w128_real_kv_calibration.py
+Calibration data:       G:\STTModels\qnn-work\decoder-fixed-window-rewrite\calib_w128_real_kv\
+Build script (updated): G:\STTModels\qnn-work\build_w128_decoder.py
+QNN convert output:     G:\STTModels\qnn-work\qnn-convert\qwen3-decoder-w128-real-kv\
+libmodel.so:            G:\STTModels\qnn-work\lib-w128-real-kv\libs\arm64-v8a\libmodel.so (870.3 MB)
+quant_overrides_v4:     cache_value range expanded to [-64, 64]
+```
+
+### 21.7 Conclusion
+
+```text
+kv_ends=1 is NOT the root cause (Slice nodes already removed in prewindow decoder).
+The root cause is HTP graphFinalize overriding cache_key/cache_value quantization scale.
+quant_overrides, calibration data, and model.cpp definitions are all ignored.
+This is a QNN HTP runtime limitation for APP_WRITE input tensors.
+```
+
+### 21.8 Gate Status Update
+
+```text
+Gate 1:  KV influence probe                 FAILED (HTP quant scale override, not kv_ends)
+Gate 9:  KV cache quant override fix         PASSED (model_net.json correct, but HTP ignores it)
+Gate 11: position encoding fix (0-indexed)   PASSED
+Gate 12: real-audio E2E with position fix    FAILED (KV data invisible to HTP)
+```
+
+### 21.9 Next Steps
+
+The problem is at the C++ runtime level, not the model conversion level.
+Options:
+
+1. **Manual quantization bypass**: In `writeFloatInputToTensor`, manually
+   quantize KV data using HTP's actual scale (1.53e-9) instead of the
+   override scale (0.015625). This means writing raw uint16 values that
+   HTP will dequantize with its scale. Values will be scaled but non-zero.
+   The host must compensate by pre-scaling KV data.
+
+2. **Direct raw buffer write**: Write pre-quantized uint16 values directly
+   to the tensor buffer, bypassing QNN's quantization entirely.
+
+3. **Float32 input**: If QNN supports float32 APP_WRITE tensors for
+   cache_key/cache_value, bypass quantization entirely. (Unlikely for HTP.)
+
+4. **QNN context binary**: Use a pre-compiled QNN context binary
+   instead of libmodel.so, which may preserve quantization settings.
+
+## Step 22: Gate A — Runtime Encoding Audit
+
+**Goal**: Capture the actual tensor encoding HTP uses after `QnnGraph_finalize`
+for `cache_key/cache_value` inputs. Determine whether HTP overrides the
+quantization scale or whether the stored structs are stale.
+
+**Method**: Added `auditRuntimeEncodings()` call at end of `init()`, after
+graphFinalize and KV cache allocation. Two audit paths:
+
+- **Path 1**: Read `quantizeParams` from `GraphInfo.inputTensors` structs
+  (in-memory, post-finalize).
+- **Path 2**: Extract context binary via `contextGetBinary`, introspect via
+  `QnnSystemContext_getMetaData` (V3 BinaryInfo).
+
+**Results**:
+
+Both paths show identical encoding for all 28 layers of cache_key/cache_value:
+
+```
+Path 1 + Path 2 (identical):
+  cache_key_0..27:  dtype=UFIXED16(16bit)  scale=1.5259021824e-09  offset=0
+                    implied_range=[0.000000, 0.000100]
+  cache_value_0..27: dtype=UFIXED16(16bit) scale=1.5259021824e-09  offset=0
+                     implied_range=[0.000000, 0.000100]
+
+  audio_features:   dtype=UFIXED16(16bit)  scale=3.0518044696e-06  offset=0  ← correct
+  attention_bias:   dtype=UFIXED16(16bit)  scale=1.5259021521e-01  offset=0  ← correct
+  rope_emb:         dtype=UFIXED16(16bit)  scale=1.5259021893e-05  offset=0  ← correct
+```
+
+Note: Device model shows dims=[1x4x8x128] — this is the W=4 build, not W=128.
+The scale=1.53e-9 finding applies to both W=4 and W=128 (confirmed in Step 21).
+
+Context binary: 917,807,104 bytes (~875 MB), V3 format, 0 context tensors,
+1 graph with 62 inputs and 57 outputs.
+
+**KV Influence Probe**: FAILED (same as Step 20/21)
+```
+Run A (zero KV):     logits_sum = -290501.69
+Run B (non-zero KV): logits_sum = -290501.69
+diff = 0.00 (threshold = 1.0)
+```
+
+**Smoke Test**: PASSED (same as previous steps)
+
+**Conclusion**: Path 1 and Path 2 both confirm scale=1.53e-9. HTP definitively
+overrides `cache_key/cache_value` APP_WRITE input quantization at graphFinalize,
+ignoring both `quant_overrides` and `model.cpp` definitions. The stored
+GraphInfo structs are NOT stale — they already reflect the HTP-overridden values.
+
+**Decision**: Proceed to Gate B (Context Binary / Converter Custom IO / Float32).
