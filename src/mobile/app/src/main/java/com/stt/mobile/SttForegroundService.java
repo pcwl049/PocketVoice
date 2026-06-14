@@ -168,8 +168,18 @@ public class SttForegroundService extends Service {
         File root = new File(getApplicationContext().getExternalFilesDir(null), "models");
         File sensevoice = new File(root, "sensevoice");
         File qwen3 = new File(root, "qwen3-asr-0.6b");
+        File qwen3Qnn = new File(root, "qwen3-asr-0.6b-qnn");
+        File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
+        if (new File(qwen3Qnn, "decoder-w4/libmodel.so").exists()
+                && new File(qwen3Qnn, "conv_frontend/libmodel.so").exists()
+                && new File(qwen3Qnn, "encoder/libmodel.so").exists()
+                && new File(qwen3QnnTokenizer, "vocab.json").exists()
+                && new File(qwen3QnnTokenizer, "merges.txt").exists()
+                && new File(qwen3QnnTokenizer, "tokenizer_config.json").exists()) {
+            return qwen3Qnn.getAbsolutePath();
+        }
         if (new File(qwen3, "conv_frontend.onnx").exists()
                 && new File(qwen3, "encoder.int8.onnx").exists()
                 && new File(qwen3, "decoder.int8.onnx").exists()
@@ -190,6 +200,14 @@ public class SttForegroundService extends Service {
     }
 
     private String prepareQnnRuntimeDir() {
+        String currentModelDir = resolveModelDir();
+        if (currentModelDir.endsWith("qwen3-asr-0.6b-qnn")) {
+            String qwen3RuntimeDir = prepareQwen3QnnRuntimeDir(currentModelDir);
+            if (qwen3RuntimeDir != null && !qwen3RuntimeDir.isEmpty()) {
+                return qwen3RuntimeDir;
+            }
+        }
+
         File runtimeDir = new File(getFilesDir(), "qnn-runtime");
         if (!runtimeDir.exists() && !runtimeDir.mkdirs()) {
             return getApplicationInfo().nativeLibraryDir;
@@ -232,6 +250,51 @@ public class SttForegroundService extends Service {
             } catch (IOException e) {
                 Log.e(TAG, "Failed to copy QNN runtime lib " + lib, e);
             }
+        }
+        return runtimeDir.getAbsolutePath();
+    }
+
+    private String prepareQwen3QnnRuntimeDir(String modelDir) {
+        File runtimeDir = new File(getFilesDir(), "qnn-runtime-qwen3");
+        if (!runtimeDir.exists() && !runtimeDir.mkdirs()) {
+            return null;
+        }
+
+        File qnnModelDir = modelDir.endsWith("-qnn") ? new File(modelDir) : new File(modelDir + "-qnn");
+        // Prefer decoder-w128 if present, fallback to decoder-w4
+        File decoderSource = new File(qnnModelDir, "decoder-w128/libmodel.so");
+        if (!decoderSource.exists()) {
+            decoderSource = new File(qnnModelDir, "decoder-w4/libmodel.so");
+        }
+        if (!decoderSource.exists()) {
+            return null;
+        }
+        File decoderTarget = new File(runtimeDir, "libmodel.so");
+        try {
+            if (!decoderTarget.exists() || decoderTarget.length() != decoderSource.length()) {
+                copyFile(decoderSource, decoderTarget);
+            }
+
+            File nativeDir = new File(getApplicationInfo().nativeLibraryDir);
+            String[] qnnLibs = new String[] {
+                    "libQnnHtp.so",
+                    "libQnnHtpPrepare.so",
+                    "libQnnHtpNetRunExtensions.so",
+                    "libQnnHtpV73Stub.so",
+                    "libQnnHtpV73CalculatorStub.so",
+                    "libQnnHtpV73Skel.so",
+                    "libQnnSystem.so"
+            };
+            for (String lib : qnnLibs) {
+                File source = new File(nativeDir, lib);
+                File target = new File(runtimeDir, lib);
+                if (!source.exists()) continue;
+                if (target.exists() && target.length() == source.length()) continue;
+                copyFile(source, target);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to prepare Qwen3 QNN runtime", e);
+            return null;
         }
         return runtimeDir.getAbsolutePath();
     }
