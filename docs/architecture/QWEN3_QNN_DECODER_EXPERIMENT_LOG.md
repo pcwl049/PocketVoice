@@ -3098,3 +3098,81 @@ that cannot be overridden from the converter side.
 4. Consider whether the problem is solvable within QNN/HTP or requires a
    fundamentally different approach (e.g., CPU fallback for decoder, or
    QNN float16 math path instead of quantized path)
+
+## Step 24: Gate B3 Tiny Custom IO QuantParam Probe
+
+**Date**: 2026-06-15
+
+### 24.1 Goal
+
+Test whether `--custom_io` / `--preserve_io datatype` can preserve usable APP_WRITE
+runtime encoding on a tiny model (Transpose-only), before attempting on the full
+870 MB decoder.
+
+### 24.2 Artifacts
+
+```text
+G:\STTModels\qnn-work\tiny-custom-io-probe\
+build\test-results\gate-b3-tiny-custom-io-probe\
+```
+
+### 24.3 Results
+
+| Variant | Converter dtype/scale | Runtime dtype/scale | Output changed | Verdict |
+|---------|----------------------|---------------------|----------------|---------|
+| float32 (`--preserve_io datatype cache_key_0 output_0`) | data_type=562 (FLOAT_32), no scale/offset | dtype=QNN_DATATYPE_FLOAT_32, dims=[1,8,128,128] | YES (all 131072 elements differ) | PASS |
+| uint8 (`--custom_io` YAML with uint8) | data_type=1032 (UFIXED_POINT_8), scale=0.015625, is_overridden=true | N/A (failed at composeGraphs) | N/A | FAIL |
+| fixed16 | Skipped | N/A | N/A | N/A |
+
+### 24.4 float32 Variant Detail
+
+- Converter output: `cache_key_0 data_type=562 (FLOAT_32)`, no scale/offset
+- HTP runtime after graphFinalize: `cache_key_0 dtype=QNN_DATATYPE_FLOAT_32, dimensions=[1,8,128,128]`
+- Zero input (all 0.0f): output all 0.0f
+- Pattern input (all 1.0f): output all 1.0f
+- **Output changes with input: YES (all 131072 elements differ)**
+- **HTP did NOT override float32 to UFIXED16 + 1.53e-9**
+
+### 24.5 uint8 Variant Detail
+
+- Converter output: `cache_key_0 data_type=1032 (UFIXED_POINT_8), scale=0.015625, is_overridden=true`
+- Failed at composeGraphs: "output_0_custom_convert" Convert node validation error
+- QNN HTP rejected the uint8-to-output type conversion in the Transpose graph
+- **Not runnable on HTP -- uint8 is a control-only datatype per the spec**
+
+### 24.6 fixed16 Variant
+
+Skipped -- no documented `--custom_io` datatype spelling for 16-bit fixed input.
+
+### 24.7 Key Finding
+
+**float32 tiny model keeps FLOAT_32 at runtime.** HTP does NOT override to UFIXED16
+on this simple Transpose-only graph.
+
+### 24.8 Important Caveat
+
+This is a **tiny Transpose-only model**, not the real 870 MB decoder. The real
+decoder has attention, MatMul, and many other ops. In Gate B Route 2 (Step 23),
+the real decoder with `--preserve_io datatype` had cache_key/cache_value as
+FLOAT_32 in model_net.json, but HTP runtime still overrode them to UFIXED16
+scale=1.53e-9. **The tiny model's success does NOT guarantee the real decoder
+will behave the same way.**
+
+### 24.9 Decision
+
+This is an **INCONCLUSIVE** result for the real decoder. The tiny model proves
+float32 APP_WRITE CAN survive HTP finalize in a simple graph, but the real
+decoder failed in Route 2. The next step should be to:
+
+1. Re-attempt `--preserve_io datatype` on the real decoder with the same
+   Transpose-based approach (if possible), or
+2. Investigate what's different about the real decoder's graph that causes
+   HTP to override float32 back to UFIXED16 (e.g., graph complexity, presence
+   of attention/MatMul, number of inputs, graph size).
+
+### 24.10 Gate Status Update
+
+```text
+Gate B3: custom_io QuantParam probe  INCONCLUSIVE
+  (tiny float32 model keeps FLOAT_32 at runtime, but real decoder failed in Route 2)
+```

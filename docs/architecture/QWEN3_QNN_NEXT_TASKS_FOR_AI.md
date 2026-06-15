@@ -33,9 +33,10 @@ Gate 14: KV influence probe (prewindow)     FAILED (HTP overrides cache_key scal
 Gate 15: non-zero calibration data fix       FAILED (HTP graphFinalize ignores quant_overrides regardless)
 Gate A: runtime encoding audit               FAILED (Path1+Path2 both confirm scale=1.53e-9, HTP overrides at finalize)
 Gate B: --preserve_io datatype float32       FAILED (HTP overrides dtype from FLOAT32 to UFIXED16+scale=1.53e-9)
+Gate B3: custom_io QuantParam                INCONCLUSIVE (tiny float32 model keeps FLOAT_32 at runtime, but real decoder failed in Route 2)
 ```
 
-Current conclusion (updated Step 21):
+Current conclusion (updated Step 24 / Gate B3):
 
 ```text
 kv_ends=1 is NOT the root cause. The prewindow decoder already removed all Slice nodes.
@@ -52,12 +53,21 @@ This is why KV Influence Probe fails: HTP literally sees zero KV regardless of i
 This is why smoke test passes: position_scalar and token differences still produce
 different logits even with zero KV (current-token attention path works).
 
-The problem is at the C++ runtime / QNN HTP quantization propagation level.
-model conversion (quant_overrides, calibration data) cannot fix it.
+Gate B3 tiny model result: float32 APP_WRITE CAN survive HTP finalize in a simple
+Transpose-only graph. The tiny model keeps FLOAT_32 at runtime, and output changes
+when input changes. However, the real 870 MB decoder with --preserve_io datatype
+(Route 2, Step 23) still had cache_key/cache_value overridden to UFIXED16+scale=1.53e-9.
 
-NEXT STEP: Determine whether HTP APP_WRITE input tensor encodings can be
-controlled or bypassed. Raw uint16 and pre-scaling are diagnostic probes only
-unless they preserve the real KV magnitude needed by Qwen3 attention.
+The discrepancy suggests the real decoder's graph complexity (attention, MatMul, many
+ops, many inputs, large graph size) triggers HTP override behavior that the simple
+tiny model does not.
+
+NEXT STEP: Investigate WHY the real decoder overrides float32 but the tiny model does
+not. Possible factors: graph complexity, presence of attention/MatMul ops, number of
+inputs, graph size. Re-attempt --preserve_io datatype on the real decoder if a
+targeted fix can be identified, or move to Gate C (raw-buffer diagnostic probe) if
+no converter-side route can preserve float32 encoding through HTP finalize on the
+real decoder graph.
 ```
 
 ## Confirmed Evidence
@@ -256,18 +266,70 @@ If runtime encoding matches `model_net.json`, stop this task and return to
 input binding/layout diagnosis. If runtime encoding still uses `1.53e-9`,
 continue to Gate B.
 
-### Gate B: Context Binary Or Converter Route
+### Gate B: Converter / Custom IO Route
 
-Goal: test one route that may preserve KV input encodings through HTP finalize.
+Goal: test only cheap routes that may preserve KV input encodings through HTP
+finalize. Route 2 already failed on the full decoder: converter output had
+`cache_key/cache_value` as FLOAT32, but HTP runtime changed them back to
+`UFIXED16 scale=1.525902e-09`.
 
-Try these in order, stopping after the first route gives correct runtime
-encoding:
+Do not start a full W=128 decoder rebuild for custom IO. First run Gate B3 as a
+tiny model probe.
 
-1. Generate and load a QNN context binary for the W=128 prewindow decoder.
-2. Try QAIRT/QNN converter custom IO or encoding options that force APP_WRITE
-   input encodings for `cache_key_N/cache_value_N`.
-3. Try float32 APP_WRITE cache inputs only if QNN HTP accepts the graph and the
-   artifact remains deployable.
+#### Gate B3: Tiny Custom IO QuantParam Probe
+
+Goal: prove whether `--custom_io` QuantParam can affect 16-bit APP_WRITE input
+runtime encoding on this QAIRT/HTP version.
+
+Important local evidence:
+
+```text
+G:\STTModels\qnn-work\decoder-layout-slice-probe\custom_io_template.yaml
+
+Template note:
+Datatype supports float32, float16 and uint8.
+QuantParam Scale/Offset will be ignored if the precision field for that I/O is
+not set to uint8.
+```
+
+This makes full decoder Route 3 low-confidence. Treat custom IO as a probe-only
+route until a tiny model proves otherwise.
+
+Required tiny probe:
+
+```text
+Input:  one cache-like APP_WRITE tensor, shape small but 4D if possible
+Output: simple value that must change when input changes
+Run 1:  custom_io Datatype uint16 or closest available fixed16 spelling,
+        QuantParam Scale=0.015625, Offset=0
+Run 2:  custom_io Datatype uint8, QuantParam Scale=0.015625, Offset=0
+Audit:  finalized runtime dtype, scale, offset after graphFinalize
+Check:  two different input buffers change output
+```
+
+Acceptance for proceeding to the full decoder:
+
+```text
+Runtime tensor encoding after HTP finalize keeps a scale that can represent the
+target KV magnitude, or uses a float datatype that avoids the bad 1.53e-9 range.
+The output changes when the input buffer changes.
+```
+
+Stop condition:
+
+```text
+If the tiny custom_io probe still finalizes to UFIXED16 scale=1.525902e-09, or
+if QuantParam is ignored except for uint8, stop converter/custom_io attempts on
+the full decoder. Move to Gate C and QNN API/config investigation.
+```
+
+Optional Route 1:
+
+```text
+Context binary load is not a main fix path. Gate A context-binary metadata
+already reported the bad scale. Run it only if save/load code already exists and
+the cost is small, as confirmation rather than as a release path.
+```
 
 Acceptance:
 
