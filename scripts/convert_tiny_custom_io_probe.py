@@ -170,9 +170,12 @@ def build_libmodel(variant: str) -> bool:
 
     model_cpp = run_dir / "model.cpp"
     model_bin = run_dir / "model.bin"
-    if not model_cpp.exists() or not model_bin.exists():
-        print(f"  [SKIP] model.cpp or model.bin missing for {variant}")
+    if not model_cpp.exists():
+        print(f"  [SKIP] model.cpp missing for {variant}")
         return False
+
+    # model.bin is optional (tiny models with no weights may not have it)
+    has_model_bin = model_bin.exists()
 
     # Clean and create build directory structure
     if build_dir.exists():
@@ -187,38 +190,54 @@ def build_libmodel(variant: str) -> bool:
 
     # Copy JNI template files
     shutil.copytree(str(QNN_JNI), str(jni_dir), dirs_exist_ok=True)
-    # Copy model files (overwrite the template model.cpp if any)
+    # Copy model.cpp (overwrite the template if any)
     shutil.copy2(str(model_cpp), str(jni_dir / "model.cpp"))
-    shutil.copy2(str(model_bin), str(jni_dir / "model.bin"))
     # Copy QNN include
     shutil.copytree(str(QNN_INCLUDE), str(qnn_inc), dirs_exist_ok=True)
 
-    # Extract raw weight files from model.bin
-    print(f"  Extracting model.bin ...")
-    try:
-        with tarfile.open(str(model_bin), "r") as tf:
-            tf.extractall(path=str(raw_dir))
-    except Exception as e:
-        print(f"  [FAIL] tar extract: {e}")
-        return False
+    raw_files = []
+    if has_model_bin:
+        shutil.copy2(str(model_bin), str(jni_dir / "model.bin"))
+        # Extract raw weight files from model.bin
+        print(f"  Extracting model.bin ...")
+        try:
+            with tarfile.open(str(model_bin), "r") as tf:
+                tf.extractall(path=str(raw_dir))
+        except Exception as e:
+            print(f"  [FAIL] tar extract: {e}")
+            return False
 
-    raw_files = list(raw_dir.glob("*.raw"))
-    if not raw_files:
-        print(f"  [FAIL] No .raw files extracted from model.bin")
-        return False
-    print(f"  Extracted {len(raw_files)} raw files")
+        raw_files = list(raw_dir.glob("*.raw"))
+        print(f"  Extracted {len(raw_files)} raw files")
 
     # objcopy each .raw -> .o
+    # IMPORTANT: Use relative path from raw_dir so symbol names are
+    # _binary_<name>_raw_start (not _binary_<full_path>_<name>_raw_start).
+    # BINVARSTART/BINLEN macros expect _binary_obj_binary_<name>_raw_start,
+    # so we also rename symbols to match.
     print(f"  Running objcopy ...")
     for raw_f in raw_files:
         o_file = obj_dir / (raw_f.stem + ".o")
+        # Run objcopy with cwd=raw_dir so the path in symbol names is short
+        # Then rename the symbols to match what BINVARSTART expects:
+        #   _binary_<filename>_raw_start -> _binary_obj_binary_<filename>_raw_start
+        base_sym = f"_binary_{raw_f.stem}_raw"
+        target_sym = f"_binary_obj_binary_{raw_f.stem}_raw"
         try:
             run([
                 str(OBJCOPY),
                 "-I", "binary",
                 "-O", "elf64-littleaarch64",
                 "-B", "aarch64",
-                str(raw_f),
+                raw_f.name,      # relative path from cwd
+                str(o_file),
+            ], cwd=str(raw_dir))
+            # Rename symbols: _binary_<name>_raw_start -> _binary_obj_binary_<name>_raw_start
+            run([
+                str(OBJCOPY),
+                "--redefine-sym", f"{base_sym}_start={target_sym}_start",
+                "--redefine-sym", f"{base_sym}_end={target_sym}_end",
+                "--redefine-sym", f"{base_sym}_size={target_sym}_size",
                 str(o_file),
             ])
         except RuntimeError as e:

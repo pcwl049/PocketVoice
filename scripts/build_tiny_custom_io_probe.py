@@ -16,18 +16,19 @@ ELEM_COUNT = int(np.prod(SHAPE))
 
 def write_model(path: Path) -> None:
     cache_in = helper.make_tensor_value_info("cache_key_0", TensorProto.FLOAT, list(SHAPE))
-    output = helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [1])
+    # Output: same shape, same data — Transpose is identity-like but QNN HTP supports it
+    output = helper.make_tensor_value_info("output_0", TensorProto.FLOAT, list(SHAPE))
 
-    one = numpy_helper.from_array(np.array(1.0, dtype=np.float32), name="one_const")
-    add = helper.make_node("Add", ["cache_key_0", "one_const"], ["added"])
-    reduce_sum = helper.make_node("ReduceSum", ["added"], ["output_0"], keepdims=0)
+    # Transpose with perm=[0,1,2,3] is a no-op on the data but forces HTP to
+    # read the input buffer and produce an output. Different inputs will produce
+    # different outputs. This is the simplest QNN-validated op we can use.
+    transpose = helper.make_node("Transpose", ["cache_key_0"], ["output_0"], perm=[0, 1, 2, 3])
 
     graph = helper.make_graph(
-        [add, reduce_sum],
+        [transpose],
         "tiny_custom_io_probe",
         [cache_in],
         [output],
-        initializer=[one],
     )
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     model.ir_version = 8
@@ -88,7 +89,7 @@ def main() -> None:
         out / "custom_io_uint8.yaml",
         [
             {"name": "cache_key_0", "layout": "NCHW", "datatype": "uint8", "quant": {"scale": 0.015625, "offset": 0}},
-            {"name": "output_0", "layout": "F", "datatype": "uint8", "quant": {"scale": 0.015625, "offset": 0}},
+            {"name": "output_0", "layout": "NCHW", "datatype": "uint8", "quant": {"scale": 0.015625, "offset": 0}},
         ],
     )
 
@@ -96,7 +97,7 @@ def main() -> None:
         out / "custom_io_float32.yaml",
         [
             {"name": "cache_key_0", "layout": "NCHW", "datatype": "float32", "quant": {"scale": 0.015625, "offset": 0}},
-            {"name": "output_0", "layout": "F", "datatype": "float32"},
+            {"name": "output_0", "layout": "NCHW", "datatype": "float32"},
         ],
     )
 
@@ -110,7 +111,7 @@ def main() -> None:
                     "datatype": args.fixed16_datatype,
                     "quant": {"scale": 0.015625, "offset": 0},
                 },
-                {"name": "output_0", "layout": "F", "datatype": args.fixed16_datatype},
+                {"name": "output_0", "layout": "NCHW", "datatype": args.fixed16_datatype},
             ],
         )
 
