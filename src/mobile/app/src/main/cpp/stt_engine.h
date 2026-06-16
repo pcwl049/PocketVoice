@@ -25,7 +25,10 @@ enum class BackendType {
     Paraformer,
     ZipformerCtc,
     SenseVoiceQnn,
-    Qwen3AsrCpu
+    ParaformerQnn,
+    Qwen3AsrCpu,
+    Qwen3AsrQnn,       // Hybrid QNN Qwen3-ASR
+    ParaformerXnnpack  // ORT + XNNPACK offline Paraformer (model.onnx)
 };
 
 class SttEngine {
