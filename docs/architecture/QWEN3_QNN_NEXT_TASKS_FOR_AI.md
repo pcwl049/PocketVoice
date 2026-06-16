@@ -371,6 +371,19 @@ though 4.7x slower than ParaformerQnn on HTP (73ms). The XNNPACK execution
 provider is confirmed active at runtime.
 ```
 
+Model artifact (not in git — too large):
+
+```text
+Source:    https://huggingface.co/csukuangfj/paraformer-offline-zh
+Files:     model.int8.onnx (232 MB) + tokens.txt (76 KB)
+Local:     models/paraformer-offline/
+Push:      scripts/push_paraformer_model.bat
+Device:    /sdcard/Android/data/com.stt.mobile/files/models/paraformer-offline/
+Contract:  model.int8.onnx OR model.onnx + tokens.txt
+Note:      Model files must be downloaded manually before push.
+           The push script will error with download instructions if missing.
+```
+
 ### Gate C2: COMPLETED (FAILED)
 
 Evidence from Step 27:

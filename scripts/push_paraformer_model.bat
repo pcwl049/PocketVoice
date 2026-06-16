@@ -11,6 +11,24 @@ echo Pushing from: %LOCAL_DIR%
 echo Pushing to:   %DEVICE_DIR%
 echo.
 
+:: Check if model directory exists at all
+if not exist "%LOCAL_DIR%" (
+    echo [Error] Model directory not found: %LOCAL_DIR%
+    echo.
+    echo The offline Paraformer model is not in the repository (too large for git).
+    echo Download it manually before pushing:
+    echo.
+    echo   mkdir models\paraformer-offline
+    echo   curl -L -o models\paraformer-offline\model.int8.onnx ^
+    echo       "https://huggingface.co/csukuangfj/paraformer-offline-zh/resolve/main/model.int8.onnx"
+    echo   curl -L -o models\paraformer-offline\tokens.txt ^
+    echo       "https://huggingface.co/csukuangfj/paraformer-offline-zh/resolve/main/tokens.txt"
+    echo.
+    echo Source: https://huggingface.co/csukuangfj/paraformer-offline-zh
+    echo Required files: model.int8.onnx (232 MB) + tokens.txt (76 KB)
+    exit /b 1
+)
+
 adb shell mkdir -p %DEVICE_DIR%
 
 :: Push the combined offline model (int8 preferred, full precision fallback)
