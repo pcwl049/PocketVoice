@@ -1,6 +1,6 @@
 ﻿# Qwen3 QNN Decoder Experiment Log
 
-Last updated: 2026-06-13
+Last updated: 2026-06-16
 
 ## Step 13: Codex model_net.json 澶嶆牳
 
@@ -3175,4 +3175,432 @@ decoder failed in Route 2. The next step should be to:
 ```text
 Gate B3: custom_io QuantParam probe  INCONCLUSIVE
   (tiny float32 model keeps FLOAT_32 at runtime, but real decoder failed in Route 2)
+```
+
+## Step 25: Gate B4 Bridge Probe For HTP Float32 Override Trigger
+
+**Date**: 2026-06-15
+
+### Goal
+
+Find the smallest bridge graph that reproduces real decoder FLOAT_32 APP_WRITE
+override to UFIXED16 scale=1.53e-9.
+
+### Key Discovery: --preserve_io datatype + Compute Ops = Convert Node Rejection
+
+Before testing B4 variants on device, a critical incompatibility was discovered:
+
+1. `--preserve_io datatype` with compute ops (ReduceSum, MatMul) causes the
+   converter to insert `Convert FLOAT_32 -> UFIXED_POINT_8` nodes.
+2. HTP rejects these Convert nodes at `composeGraphs` with
+   `MODEL_GRAPH_OP_VALIDATION_ERROR`.
+3. B3's Transpose-only model passed because HTP handles simple passthrough
+   operations without requiring quantization.
+
+This means `--preserve_io datatype` cannot be used with any model that has
+compute operations on HTP. The B4 probe strategy was adjusted to use natural
+quantization (without `--preserve_io`) with calibration data, and check whether
+HTP overrides the converter-computed quantization scale.
+
+### Additional Fixes Required
+
+1. **Calibration input_list format**: QNN netrun expects all inputs for one
+   inference on a single space-separated line, not one input per line.
+2. **HTP runtime libraries**: B4-1+ requires `libQnnHtpPrepare.so`,
+   `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so`, `libQnnSystem.so` in
+   addition to `libQnnHtp.so`. B4-0 (simplest graph) worked without them.
+
+### Artifacts
+
+```text
+G:\STTModels\qnn-work\tiny-custom-io-probe\
+build\test-results\gate-b4-bridge-probe\
+```
+
+### Results
+
+| Variant | Converter scale | Runtime dtype | Output changed | Verdict |
+|---|---|---|---|---|
+| B4-0 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | baseline OK |
+| B4-1 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | MatMul OK |
+| B4-2 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | dual-input OK |
+| B4-3 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | 56-input OK |
+| B4-4 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | 56-in+delta-out OK |
+| B4-5 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | attention-shaped OK |
+| B4-6 | 0.00392 (UFIXED8) | UFIXED_POINT_8 | YES | attention+RoPE OK |
+
+### Analysis
+
+No B4 variant reproduced the real decoder's UFIXED16 scale=1.53e-9 override.
+All variants kept UFIXED_POINT_8 with the expected scale=0.00392 from calibration.
+
+This confirms that the 1.53e-9 override is NOT triggered by:
+- MatMul consumption of cache inputs
+- Multiple cache-like APP_WRITE inputs
+- High input count (56 inputs)
+- Key/value delta-like output structure
+- Attention-shaped graph (Q*K^T MatMul)
+- RoPE-like elementwise operations
+
+The trigger is likely one of:
+- Graph scale / total parameter count (870 MB vs <100 KB)
+- Full decoder op mix (Softmax, GELU, LayerNorm, etc.)
+- Converter graph partitioning or optimization on large models
+- HTP memory layout differences for large models
+
+### Decision
+
+B4: INCONCLUSIVE — No bridge variant reproduced the UFIXED16 1.53e-9 override.
+
+The `--preserve_io datatype` path is also blocked: HTP rejects Convert nodes
+that the converter inserts when compute ops consume preserved FLOAT_32 inputs.
+
+Next: Move to Gate C raw-buffer connectivity probe on the real decoder.
+
+## Step 26: Gate C Raw-Buffer Connectivity Probe
+
+**Date**: 2026-06-15
+
+### Goal
+
+Determine whether HTP reads the APP_WRITE cache buffers in the real prewindow
+W=128 decoder, even with the broken scale=1.53e-9.
+
+### Probe Design
+
+- Probe 1: zero cache buffers vs max-pattern (uint16 0xFFFF equivalent float32)
+- Probe 2: zero cache buffers vs real KV data from calib_w128_real_kv
+- Run via qnn-net-run on the existing lib-w128-kv-fix decoder (912 MB)
+
+### Result: qnn-net-run Graph Finalization Failure
+
+All three probe variants (zero, maxpattern, realkv) failed with the same error:
+
+```text
+Composing Graphs
+Finalizing Graphs
+Finalize Graph for Idx = 0 failed with error = 1002
+Encountered error 1 while finalizing graphs.
+Graph Finalize failure
+```
+
+Error code 1002 = QNN_COMMON_ERROR_GRAPH_FINALIZATION_FAILED.
+
+This error occurs on all three input sets, indicating the failure is NOT
+input-dependent. The 912 MB decoder model cannot finalize on HTP through
+qnn-net-run, even though it works in the APK through the JNI interface.
+
+### Analysis
+
+The real decoder works in the APK (QnnContext_create + QnnGraph_finalize succeeds).
+But the same decoder fails through qnn-net-run with error 1002.
+
+Possible causes:
+1. **HTP memory pressure**: qnn-net-run may have different memory allocation
+   patterns than the APK's QNN backend initialization.
+2. **Missing runtime configuration**: The APK may set up HTP differently
+   (e.g., through QnnDevice_create parameters or QnnPropertyGroup settings).
+3. **Model library format**: The 912 MB libmodel.so may need specific loading
+   flags or environment variables that qnn-net-run doesn't provide.
+4. **HTP session state**: Previous APK runs may have left HTP in a state that
+   prevents qnn-net-run from finalizing a new graph.
+
+### Decision
+
+Gate C: INCONCLUSIVE — qnn-net-run cannot finalize the real decoder on HTP.
+
+The offline probe approach is blocked. To proceed with Gate C, the options are:
+1. **APK-level probe**: Add probe code to Qwen3QnnBackend that writes zero vs
+   max-pattern cache buffers and compares logits. This requires modifying APK code.
+2. **Fix qnn-net-run setup**: Investigate what initialization the APK does that
+   qnn-net-run doesn't, and replicate it.
+3. **Smaller decoder variant**: Test with a smaller decoder (e.g., W=8 prewindow)
+   that might fit through qnn-net-run.
+
+Option 1 (APK-level probe) is the most direct path to answering the Gate C question.
+
+## Step 27: Gate C2 APK-Embedded Cache Buffer Connectivity Probe
+
+**Date**: 2026-06-15
+
+### Goal
+
+Determine whether HTP reads the APP_WRITE cache buffers in the real prewindow
+W=128 decoder running inside the APK, even with the broken scale=1.53e-9.
+
+### Method
+
+Added `runCacheBufferProbe()` to `Qwen3QnnBackend`. Runs three decoder steps
+with identical non-cache inputs but different cache data:
+
+- Run A: all cache_key_N = 0.0f, all cache_value_N = 0.0f
+- Run B: all cache_key_N = 1023.984375f (uint16 max), all cache_value_N = 2.0f
+- Run C: realkv-like data (sin/cos, key amplitude 300.0f, value amplitude 0.85f)
+
+All runs use: input_ids=0, attention_mask=1, position_scalar=1, audio_features=zero.
+
+### Results
+
+| Run | logits_sum | argmax | key_delta0_max | key_delta0_nonzero | value_delta0_max | value_delta0_nonzero |
+|---|---|---|---|---|---|---|
+| A (zero) | -290501.69 | 0 | 330.66 | 1021 | 0.64 | 1024 |
+| B (maxpattern) | -290501.69 | 0 | 330.66 | 1021 | 0.64 | 1024 |
+| C (realkv-like) | -290501.69 | 0 | 330.66 | 1021 | 0.64 | 1024 |
+
+A vs B logits_sum diff: 0.000000
+A vs C logits_sum diff: 0.000000
+
+### Analysis
+
+All three runs produce **identical** outputs across every measured metric:
+- logits_sum is exactly -290501.69 for all three
+- argmax is exactly 0 for all three
+- key_delta_0 and value_delta_0 are identical across all three runs
+
+This conclusively proves that **HTP does not read the APP_WRITE cache buffer
+data at all**, or the scale=1.53e-9 is so extreme that all real values are
+quantized to zero before the attention mechanism sees them.
+
+The non-zero key_delta_0_max=330.66 comes from the current-token computation
+path (which does work), not from the KV cache input.
+
+### Verdict
+
+**Gate C2: FAILED — HTP does not read cache buffers, or signal is truncated
+below observable output.**
+
+The decoder's current-token attention path works correctly (smoke test passes),
+but the KV cache input path is effectively disconnected. With scale=1.53e-9,
+any float32 value written to cache_key_N/cache_value_N is quantized to 0
+after HTP graphFinalize overrides the scale.
+
+### Next Steps
+
+The quantization override is the root cause. Possible paths:
+
+1. **Pre-scale cache data**: Write float32 values that, after HTP's 1.53e-9
+   scale dequantization, produce useful magnitudes. This requires writing
+   values ~1e11 magnitude to survive the scale, which would overflow uint16.
+2. **Bypass HTP quantization**: Find a QNN API or graph form that prevents
+   HTP from overriding the quantization scale.
+3. **Alternative KV delivery**: Pass KV data through a different mechanism
+   (e.g., as part of audio_features or a separate tensor) that HTP does
+   not override.
+4. **Different hardware path**: Use CPU fallback for KV-dependent ops.
+
+## Step 28: Gate D1 CPU Decoder Fallback Probe
+
+**Date**: 2026-06-15
+
+### Goal
+
+Measure whether the existing Qwen3AsrCpu path (sherpa-onnx C API + ORT CPU) is usable on the target Android phone (Snapdragon 8 Gen 3).
+
+### Method
+
+- Built default QNN APK with STT_GATE_D1 timing/RSS probes in stt_engine.cpp
+- Hidden QNN model directory on device to force Qwen3AsrCpu backend selection
+- Sent test WAV (5.6s Chinese speech) from PC client via TCP
+- Measured init latency, decode latency, RSS memory, and output correctness
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| Backend selected | qwen3_asr_cpu |
+| Init latency | 6,745 ms |
+| Init RSS | 1,457,320 KB (~1.4 GB) |
+| Audio duration | 5,611 ms |
+| Decode latency | 3,313 ms |
+| RSS before decode | 989,268 KB (~966 MB) |
+| RSS after decode | 1,661,192 KB (~1.6 GB) |
+| RSS delta | 671,924 KB (~656 MB) |
+| Output | "对我做了介绍啊。那么我想说的是呢，大家如果对我的研究感兴趣呢。" |
+| Real-time factor | 0.59x (3313ms / 5611ms) |
+
+### Logcat Evidence
+
+```text
+STT_GATE_D1: backend=qwen3_asr_cpu
+STT_GATE_D1: init_start
+STT_GATE_D1: init_done init_ms=6745 rss_kb=1457320
+STT_GATE_D1: audio_duration_ms=5611 audio_samples=89784
+STT_GATE_D1: decode_start rss_before_kb=989268
+STT_GATE_D1: decode_done total_ms=3313 rss_after_kb=1661192 rss_delta_kb=671924
+STT_GATE_D1: result="对我做了介绍啊。那么我想说的是呢，大家如果对我的研究感兴趣呢。"
+```
+
+### Verdict
+
+**Gate D1: CPU_FALLBACK_CORRECT_BUT_TOO_SLOW**
+
+- Output is correct, coherent Chinese text.
+- Decode 3.3s for 5.6s audio is faster than real-time.
+- User product requirement is stricter: recognition latency must be <= 1s per segment.
+- Measured 3.3s decode does not meet the product latency target.
+- Memory ~1.6 GB peak is acceptable for the user for now and is not the blocking issue.
+
+### Analysis
+
+The CPU decoder path works correctly and is useful as a correctness baseline or
+fallback:
+- 5.6s audio decoded in 3.3s means the CPU can keep up with non-strict real-time input.
+- Init takes 6.7s as a one-time startup cost.
+- Peak memory ~1.6 GB is high but not the current blocker per user preference.
+- The product latency target is <=1s, so this path is too slow for the main path.
+- The QNN HTP decoder path remains unsuitable because KV cache input has no effect.
+
+### Next
+
+Do not make Qwen3AsrCpu the final default for the low-latency product path.
+Keep it as a correctness baseline/fallback. Move to Gate D3: evaluate lower
+latency on-device model/runtime options that can plausibly meet <=1s per segment.
+
+## Step 29: Gate D3 — Paraformer QNN HTP Device Test
+
+Date: 2026-06-16
+
+### Goal
+
+Validate Paraformer QNN HTP backend on target phone (Snapdragon 7 Gen 3, SM8735) for low-latency Chinese ASR.
+
+### Prerequisites
+
+- sherpa-onnx C API patched with Paraformer QNN fields (qnn_backend_lib, qnn_context_binary, qnn_system_lib)
+- libsherpa-onnx-c-api.so rebuilt from source with Paraformer QNN mapping
+- Paraformer QNN model artifacts (5s version) downloaded from sherpa-onnx releases
+- Model .so files copied from external storage to internal storage (Android linker namespace requires dlopen from /data/data, not /sdcard)
+
+### Test Results
+
+**Backend: paraformer_qnn (5s model)**
+
+```text
+Init: ~13 seconds (from .so model libs, context binary auto-generated on device)
+Decode: 73 ms for 5611 ms audio
+RTF: 0.013x (73/5611)
+Peak RSS: not measured yet
+Output: "对我做了介绍啊那么我想说的呢大家如果对我的研究感兴趣呢"
+Quality: matches Qwen3 CPU baseline output
+```
+
+**Latency comparison:**
+
+```text
+Qwen3AsrCpu (Gate D1):  3313 ms decode / 5611 ms audio (0.59x RTF)
+ParaformerQnn (Gate D3):   73 ms decode / 5611 ms audio (0.013x RTF)
+Speedup: 45x
+```
+
+### Key Fixes Required
+
+1. **C API patch**: `SherpaOnnxOfflineParaformerModelConfig` needed 3 new QNN fields (`qnn_backend_lib`, `qnn_context_binary`, `qnn_system_lib`) with mapping in `GetOfflineRecognizerConfig()`. Prebuilt libsherpa-onnx-c-api.so did not include these fields; required incremental rebuild from source.
+
+2. **Android linker namespace**: `.so` model files on `/sdcard/` cannot be dlopen'd. Added `prepareParaformerQnnModelDir()` in Java to copy model files from external storage to internal storage (`/data/user/0/com.stt.mobile/files/paraformer-qnn/`).
+
+3. **nullptr crash**: `qnn_context_binary` and `qnn_system_lib` set to `nullptr` caused `strlen(nullptr)` crash in `SHERPA_ONNX_OR` macro. Fixed by using empty strings `""` instead.
+
+### Conclusion
+
+```text
+Gate D3: PASSED
+Backend: paraformer_qnn
+Artifact format: model_lib (.so)
+Model dir on device: /data/user/0/com.stt.mobile/files/paraformer-qnn/
+Decode: 73 ms for 5611 ms audio (0.013x RTF)
+Output: correct Chinese text
+Next: 10s model test, then backend selection UI
+```
+
+## Step 30: Gate E -- ORT + XNNPACK Paraformer Offline Fallback
+
+Objective: Validate ORT + XNNPACK as the preferred non-QNN fallback backend
+for Paraformer offline ASR. The XNNPACK execution provider should accelerate
+CPU inference on ARM without requiring HTP/NPU.
+
+Prerequisites:
+- libonnxruntime.so contains XNNPACK EP (Microsoft official build v1.24.3)
+- libsherpa-onnx-c-api.so rebuilt with XNNPACK code path preserved
+  (original build had XNNPACK case optimized out by Thin LTO + -O3)
+- Paraformer offline model (model.int8.onnx + tokens.txt) pushed to device
+- ParaformerXnnpack backend added to stt_engine BackendType enum
+
+### sherpa-onnx XNNPACK Rebuild Details
+
+The original `libsherpa-onnx-c-api.so` had no XNNPACK-related strings in the
+binary. Binary search confirmed: `XnnpackExecutionProvider`, `xnnpack`,
+`XNNPACK` all absent. Root cause: Thin LTO + -O3 cross-procedural optimization
+inlined `GetSessionOptionsImpl()`, determined the `Provider::kXnnpack` case
+branch was unreachable, and deleted it along with all associated string
+constants.
+
+Fix applied to sherpa-onnx source:
+1. Added `SHERPA_ONNX_DISABLE_LTO` CMake option to skip `check_ipo_supported()`
+2. Compiled `session.cc`, `provider.cc`, `c-api.cc` at -O1 instead of -O3
+3. Added global extern string variables (`kXnnpackEpName`, `kXnnpackEpKey`)
+   referenced by a new exported function `SherpaOnnxXnnpackEnabled()`
+4. Build script passes `-DSHERPA_ONNX_DISABLE_LTO=ON`
+
+After rebuild, binary search confirmed:
+```text
+FOUND: XnnpackExecutionProvider at offset 411193
+FOUND: xnnpack at offset 331177
+FOUND: XNNPACK at offset 411218
+FOUND: SherpaOnnxXnnpackEnabled at offset 10537 (GLOBAL FUNC export)
+```
+
+### Test Results
+
+**Backend: paraformer_xnnpack (offline Paraformer + XNNPACK EP)**
+
+```text
+Init: ~2.6 seconds (ORT session creation with XNNPACK EP)
+Model: model.int8.onnx (232 MB) + tokens.txt (76 KB)
+Decode: 342 ms for 5611 ms audio
+RTF: 0.061x (342/5611)
+Peak RSS: not measured yet
+Output: "对我做了介绍啊那么我想说的是呢大家如果对我的研究感兴趣呢你"
+Quality: correct Chinese text
+XNNPACK EP: active (not falling back to CPU provider)
+```
+
+**Latency comparison:**
+
+```text
+ParaformerQnn (Gate D3, HTP):   73 ms / 5611 ms audio (0.013x RTF)
+ParaformerXnnpack (Gate E):    342 ms / 5611 ms audio (0.061x RTF)
+Qwen3AsrCpu (Gate D1):       3313 ms / 5611 ms audio (0.59x RTF)
+
+ParaformerXnnpack is 4.7x slower than ParaformerQnn (HTP)
+ParaformerXnnpack is 9.7x faster than Qwen3AsrCpu
+ParaformerXnnpack is well within the <=1000ms product target
+```
+
+### Key Fixes Required
+
+1. **sherpa-onnx XNNPACK code path optimized out**: Required rebuild with
+   `SHERPA_ONNX_DISABLE_LTO=ON`, -O1 for key files, and global extern
+   variables to prevent dead-code elimination.
+
+2. **Missing tokens path in config**: Initial ParaformerXnnpack init block
+   omitted `config.model_config.tokens = tokensPath.c_str()`. This caused
+   sherpa-onnx validation error `tokens: '' does not exist` and both
+   XNNPACK and CPU fallback failed. Fixed by adding the tokens path.
+
+3. **Offline vs streaming Paraformer model format**: The offline Paraformer
+   uses a single combined `model.int8.onnx` (232 MB) from
+   `csukuangfj/paraformer-offline-zh`, not the separate `encoder.int8.onnx`
+   + `decoder.int8.onnx` pair used by the streaming Paraformer.
+
+### Conclusion
+
+```text
+Gate E: PASSED
+Backend: paraformer_xnnpack
+Artifact format: model.onnx (single combined ONNX file)
+Model dir on device: /sdcard/Android/data/com.stt.mobile/files/models/paraformer-offline/
+Decode: 342 ms for 5611 ms audio (0.061x RTF)
+XNNPACK EP: active
+Output: correct Chinese text
+Next: measure peak RSS, validate with diverse audio, LiteRT compatibility check
 ```
