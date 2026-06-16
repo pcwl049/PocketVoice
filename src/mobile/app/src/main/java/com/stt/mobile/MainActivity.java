@@ -162,8 +162,21 @@ public class MainActivity extends Activity {
         File root = new File(getApplicationContext().getExternalFilesDir(null), "models");
         File sensevoice = new File(root, "sensevoice");
         File qwen3 = new File(root, "qwen3-asr-0.6b");
+        File qwen3Qnn = new File(root, "qwen3-asr-0.6b-qnn");
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
+        File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
+        
+        // Qwen3 QNN has highest priority
+        if (new File(qwen3Qnn, "decoder-w4/libmodel.so").exists()
+                && new File(qwen3Qnn, "conv_frontend/libmodel.so").exists()
+                && new File(qwen3Qnn, "encoder/libmodel.so").exists()
+                && new File(qwen3QnnTokenizer, "vocab.json").exists()
+                && new File(qwen3QnnTokenizer, "merges.txt").exists()
+                && new File(qwen3QnnTokenizer, "tokenizer_config.json").exists()) {
+            return qwen3Qnn.getAbsolutePath();
+        }
+        
         if (new File(qwen3, "conv_frontend.onnx").exists()
                 && new File(qwen3, "encoder.int8.onnx").exists()
                 && new File(qwen3, "decoder.int8.onnx").exists()
@@ -175,10 +188,25 @@ public class MainActivity extends Activity {
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();
         }
+        File paraformerQnn = new File(root, "paraformer-qnn");
+        if (new File(paraformerQnn, "libencoder.so").exists()
+                && new File(paraformerQnn, "libpredictor.so").exists()
+                && new File(paraformerQnn, "libdecoder.so").exists()
+                && new File(paraformerQnn, "tokens.txt").exists()) {
+            return paraformerQnn.getAbsolutePath();
+        }
         if (new File(zipformer, "model.int8.onnx").exists()
                 && new File(zipformer, "bbpe.model").exists()
                 && new File(zipformer, "tokens.txt").exists()) {
             return zipformer.getAbsolutePath();
+        }
+        // Paraformer XNNPACK (offline, single model.onnx with XNNPACK execution provider)
+        File paraformerOffline = new File(root, "paraformer-offline");
+        if (paraformerOffline.exists() && new File(paraformerOffline, "tokens.txt").exists()
+                && (new File(paraformerOffline, "model.int8.onnx").exists()
+                    || new File(paraformerOffline, "model.onnx").exists())) {
+            Log.i(TAG, "Found Paraformer offline model at: " + paraformerOffline.getAbsolutePath());
+            return paraformerOffline.getAbsolutePath();
         }
         return paraformer.getAbsolutePath();
     }
@@ -230,6 +258,109 @@ public class MainActivity extends Activity {
             }
         }
         return runtimeDir.getAbsolutePath();
+    }
+
+    /**
+     * Prepare Qwen3 QNN runtime directory.
+     * Copies decoder libmodel.so from external storage to internal storage if needed.
+     * @return Path to Qwen3 QNN runtime directory
+     */
+    private String prepareQwen3QnnRuntimeDir() {
+        File runtimeDir = new File(getFilesDir(), "qnn-runtime-qwen3");
+        if (!runtimeDir.exists() && !runtimeDir.mkdirs()) {
+            addLog("Qwen3 QNN runtime dir unavailable: " + runtimeDir.getAbsolutePath());
+            return null;
+        }
+        
+        // Check if we need to copy decoder libmodel.so
+        File qnnModelDir = modelDir.endsWith("-qnn") ? new File(modelDir) : new File(modelDir + "-qnn");
+        File decoderSource = new File(qnnModelDir, "decoder-w4/libmodel.so");
+        File decoderTarget = new File(runtimeDir, "libmodel.so");
+        
+        if (!decoderSource.exists()) {
+            addLog("Qwen3 QNN decoder not found: " + decoderSource.getAbsolutePath());
+            return null;
+        }
+        
+        // Copy decoder libmodel.so if size changed
+        if (!decoderTarget.exists() || decoderTarget.length() != decoderSource.length()) {
+            addLog("Copying Qwen3 QNN decoder libmodel.so...");
+            try {
+                copyFile(decoderSource, decoderTarget);
+                addLog("Qwen3 QNN decoder copied: " + decoderTarget.length() + " bytes");
+            } catch (IOException e) {
+                addLog("Qwen3 QNN decoder copy failed: " + e.getMessage());
+                Log.e(TAG, "Failed to copy Qwen3 QNN decoder", e);
+                return null;
+            }
+        }
+        
+        // Copy QNN runtime libs
+        File nativeDir = new File(getApplicationInfo().nativeLibraryDir);
+        String[] qnnLibs = {
+            "libQnnHtp.so",
+            "libQnnHtpPrepare.so",
+            "libQnnHtpNetRunExtensions.so",
+            "libQnnHtpV73Stub.so",
+            "libQnnHtpV73CalculatorStub.so",
+            "libQnnHtpV73Skel.so",
+            "libQnnSystem.so"
+        };
+        
+        for (String lib : qnnLibs) {
+            File source = new File(nativeDir, lib);
+            File target = new File(runtimeDir, lib);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                addLog("Qwen3 QNN runtime copy failed: " + lib);
+                Log.e(TAG, "Failed to copy Qwen3 QNN runtime lib " + lib, e);
+            }
+        }
+        
+        addLog("Qwen3 QNN runtime dir: " + runtimeDir.getAbsolutePath());
+        return runtimeDir.getAbsolutePath();
+    }
+
+    /**
+     * Prepare Paraformer QNN model directory.
+     * Copies model .so files from external storage to internal storage because
+     * Android linker does not allow dlopen from /sdcard/.
+     * @return Path to internal Paraformer QNN model directory, or original modelDir if not applicable
+     */
+    private String prepareParaformerQnnModelDir() {
+        if (!modelDir.endsWith("paraformer-qnn")) {
+            return modelDir;
+        }
+        File internalDir = new File(getFilesDir(), "paraformer-qnn");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            addLog("Paraformer QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        File externalDir = new File(modelDir);
+        String[] modelFiles = new String[] {
+                "libencoder.so",
+                "libpredictor.so",
+                "libdecoder.so",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                addLog("Paraformer QNN copy failed: " + name);
+                Log.e(TAG, "Failed to copy Paraformer QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
     }
 
     private static void copyFile(File source, File target) throws IOException {
@@ -342,7 +473,17 @@ public class MainActivity extends Activity {
 
     private void startServer() {
         modelDir = resolveModelDir();
-        qnnRuntimeDir = prepareQnnRuntimeDir();
+        if (modelDir.endsWith("qwen3-asr-0.6b-qnn")) {
+            qnnRuntimeDir = prepareQwen3QnnRuntimeDir();
+            if (qnnRuntimeDir == null || qnnRuntimeDir.isEmpty()) {
+                qnnRuntimeDir = prepareQnnRuntimeDir();
+            }
+        } else if (modelDir.endsWith("paraformer-qnn")) {
+            modelDir = prepareParaformerQnnModelDir();
+            qnnRuntimeDir = prepareQnnRuntimeDir();
+        } else {
+            qnnRuntimeDir = prepareQnnRuntimeDir();
+        }
         addLog("Starting server on port 27000...");
         addLog("Model: " + modelDir);
         SttForegroundService.start(this, modelDir, qnnRuntimeDir);

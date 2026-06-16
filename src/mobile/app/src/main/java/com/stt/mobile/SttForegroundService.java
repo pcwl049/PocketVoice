@@ -196,6 +196,14 @@ public class SttForegroundService extends Service {
                 && new File(zipformer, "tokens.txt").exists()) {
             return zipformer.getAbsolutePath();
         }
+        // Paraformer XNNPACK (offline, single model.onnx with XNNPACK execution provider)
+        File paraformerOffline = new File(root, "paraformer-offline");
+        if (paraformerOffline.exists() && new File(paraformerOffline, "tokens.txt").exists()
+                && (new File(paraformerOffline, "model.int8.onnx").exists()
+                    || new File(paraformerOffline, "model.onnx").exists())) {
+            Log.i(TAG, "Found Paraformer offline model at: " + paraformerOffline.getAbsolutePath());
+            return paraformerOffline.getAbsolutePath();
+        }
         return paraformer.getAbsolutePath();
     }
 
