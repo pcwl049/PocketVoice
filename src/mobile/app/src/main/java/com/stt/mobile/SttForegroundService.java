@@ -71,6 +71,11 @@ public class SttForegroundService extends Service {
         String runtimeDir = intent != null ? intent.getStringExtra(EXTRA_RUNTIME_DIR) : null;
         if (modelDir == null || modelDir.isEmpty()) {
             modelDir = resolveModelDir();
+            // When fallback resolve picks paraformer-qnn, .so files must be
+            // copied to internal storage (Android linker cannot dlopen from /sdcard)
+            if (modelDir.endsWith("paraformer-qnn")) {
+                modelDir = prepareParaformerQnnModelDir(modelDir);
+            }
         }
         if (runtimeDir == null || runtimeDir.isEmpty()) {
             runtimeDir = prepareQnnRuntimeDir();
@@ -191,6 +196,14 @@ public class SttForegroundService extends Service {
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();
         }
+        File paraformerQnn = new File(root, "paraformer-qnn");
+        if (new File(paraformerQnn, "libencoder.so").exists()
+                && new File(paraformerQnn, "libpredictor.so").exists()
+                && new File(paraformerQnn, "libdecoder.so").exists()
+                && new File(paraformerQnn, "tokens.txt").exists()) {
+            Log.i(TAG, "Found Paraformer QNN model at: " + paraformerQnn.getAbsolutePath());
+            return paraformerQnn.getAbsolutePath();
+        }
         if (new File(zipformer, "model.int8.onnx").exists()
                 && new File(zipformer, "bbpe.model").exists()
                 && new File(zipformer, "tokens.txt").exists()) {
@@ -205,6 +218,35 @@ public class SttForegroundService extends Service {
             return paraformerOffline.getAbsolutePath();
         }
         return paraformer.getAbsolutePath();
+    }
+
+    private String prepareParaformerQnnModelDir(String modelDir) {
+        File internalDir = new File(getFilesDir(), "paraformer-qnn");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            Log.e(TAG, "Paraformer QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        File externalDir = new File(modelDir);
+        String[] modelFiles = new String[] {
+                "libencoder.so",
+                "libpredictor.so",
+                "libdecoder.so",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy Paraformer QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
     }
 
     private String prepareQnnRuntimeDir() {
