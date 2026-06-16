@@ -1,6 +1,6 @@
 # Qwen3 QNN Next Tasks For AI
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 
 This is the active handoff for the next AI worker. It replaces older appended task lists.
 
@@ -10,6 +10,13 @@ This is the active handoff for the next AI worker. It replaces older appended ta
 docs/architecture/QWEN3_QNN_DECODER_EXPERIMENT_LOG.md
 docs/architecture/QWEN3_QNN_ANDROID_INTEGRATION_SPEC.md
 docs/architecture/QWEN3_QNN_DIAGNOSIS_REPORT.md
+docs/superpowers/specs/2026-06-15-gate-b3-tiny-custom-io-probe-design.md
+docs/superpowers/plans/2026-06-15-gate-b3-tiny-custom-io-probe.md
+docs/superpowers/specs/2026-06-15-gate-b4-bridge-probe-design.md
+docs/superpowers/specs/2026-06-15-gate-c-raw-buffer-probe-design.md
+docs/superpowers/plans/2026-06-15-gate-c-raw-buffer-probe.md
+docs/superpowers/specs/2026-06-15-gate-c2-apk-cache-buffer-probe-design.md
+docs/superpowers/plans/2026-06-15-gate-c2-apk-cache-buffer-probe.md
 third_party/sherpa-onnx-src/sherpa-onnx/csrc/offline-recognizer-qwen3-asr-impl.cc
 ```
 
@@ -20,9 +27,9 @@ Gate 1: QNN init smoke                 PASSED
 Gate 2: W=4 in-app smoke gate          PASSED
 Gate 3: audio_features quant fix       PASSED
 Gate 4: sherpa generation cleanup      PASSED
-Gate 5: real-audio E2E with W=4        FAILED
+Gate 5: real-audio E2E with W=4        FAILED (superseded: Paraformer QNN HTP bypasses this)
 Gate 6: W=128 decoder build + init     PASSED
-Gate 7: real-audio E2E with W=128      FAILED (identical garbage to W=4)
+Gate 7: real-audio E2E with W=128      FAILED (superseded: Paraformer QNN HTP bypasses this)
 Gate 8: KV cache quantization           CONFIRMED ROOT CAUSE (Step 18 diagnosis)
 Gate 9: KV cache quant override fix     PASSED (model_net.json verified, cache_key/value is_overridden=True)
 Gate 10: real-audio E2E with KV fix      FAILED (garbage but different from W=4, KV data now non-zero)
@@ -34,40 +41,29 @@ Gate 15: non-zero calibration data fix       FAILED (HTP graphFinalize ignores q
 Gate A: runtime encoding audit               FAILED (Path1+Path2 both confirm scale=1.53e-9, HTP overrides at finalize)
 Gate B: --preserve_io datatype float32       FAILED (HTP overrides dtype from FLOAT32 to UFIXED16+scale=1.53e-9)
 Gate B3: custom_io QuantParam                INCONCLUSIVE (tiny float32 model keeps FLOAT_32 at runtime, but real decoder failed in Route 2)
+Gate B4: bridge probe for HTP override trigger INCONCLUSIVE (no small model reproduces the UFIXED16 1.53e-9 override; --preserve_io blocked by Convert node rejection)
+Gate C: raw-buffer connectivity probe          INCONCLUSIVE (qnn-net-run cannot finalize the 912 MB real decoder on HTP, error 1002)
+Gate C2: APK-embedded cache buffer probe       FAILED (HTP does NOT read APP_WRITE cache buffers; zero/maxpattern/realkv outputs identical)
+Gate D1: CPU decoder fallback probe              PRODUCT-FAILED (3313ms decode, correct output, but user requires <=1000ms latency)
+Gate D3: Paraformer QNN HTP device test       PASSED (73ms decode, correct output)
+Gate E: ORT + XNNPACK Paraformer offline       PASSED (342ms decode, correct output, XNNPACK EP active)
 ```
 
-Current conclusion (updated Step 24 / Gate B3):
+Current conclusion (updated Step 30 / Gate E):
 
 ```text
-kv_ends=1 is NOT the root cause. The prewindow decoder already removed all Slice nodes.
-The W=128 KV window is directly fed to the attention mechanism.
+Gate E proved ORT + XNNPACK works as the preferred non-QNN fallback backend.
+ParaformerXnnpack achieves 342ms decode for 5.61s audio (0.061x RTF) with
+correct Chinese output. XNNPACK execution provider is active (not falling back
+to CPU). This is well within the <=1000ms product target.
 
-ROOT CAUSE: HTP graphFinalize overrides cache_key_N / cache_value_N quantization scale.
-  model.cpp defines:    scale = 0.015625 (min=-512, max=512)
-  quant_overrides:      scale = 0.015625, is_overridden=True
-  model_net.json:       is_overridden=True, scale=0.015625
-  HTP runtime actual:   scale = 1.5259021824e-09 (range [-0.0001, 0.0001])
+Backend priority on Android:
+  Primary:      ParaformerQnn (73ms, QNN HTP)
+  Fallback 1:   ParaformerXnnpack (342ms, ORT + XNNPACK)
+  Fallback 2:   Qwen3AsrCpu (3313ms, correctness baseline)
 
-With scale=1.53e-9, all real KV data (key_absmax~330) is quantized to 0.
-This is why KV Influence Probe fails: HTP literally sees zero KV regardless of input.
-This is why smoke test passes: position_scalar and token differences still produce
-different logits even with zero KV (current-token attention path works).
-
-Gate B3 tiny model result: float32 APP_WRITE CAN survive HTP finalize in a simple
-Transpose-only graph. The tiny model keeps FLOAT_32 at runtime, and output changes
-when input changes. However, the real 870 MB decoder with --preserve_io datatype
-(Route 2, Step 23) still had cache_key/cache_value overridden to UFIXED16+scale=1.53e-9.
-
-The discrepancy suggests the real decoder's graph complexity (attention, MatMul, many
-ops, many inputs, large graph size) triggers HTP override behavior that the simple
-tiny model does not.
-
-NEXT STEP: Investigate WHY the real decoder overrides float32 but the tiny model does
-not. Possible factors: graph complexity, presence of attention/MatMul ops, number of
-inputs, graph size. Re-attempt --preserve_io datatype on the real decoder if a
-targeted fix can be identified, or move to Gate C (raw-buffer diagnostic probe) if
-no converter-side route can preserve float32 encoding through HTP finalize on the
-real decoder graph.
+NEXT: Measure peak RSS for ParaformerXnnpack, validate with more diverse audio
+samples, and run the Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check.
 ```
 
 ## Confirmed Evidence
@@ -223,151 +219,299 @@ src/mobile/app/src/main/cpp/qwen3_qnn_backend.cpp
 src/mobile/app/src/main/cpp/qwen3_qnn_backend.h
 ```
 
-## Next Task: Determine Whether HTP KV Input Encoding Can Be Controlled
+## Next Task: Peak RSS Measurement, Diverse Audio Validation, and LiteRT Compatibility Check
 
-Gate 1 (KV Influence Probe) failed because HTP graphFinalize overrides
-cache_key/cache_value quantization scale to 1.53e-9, making all KV data
-invisible. The prewindow decoder (Slice removed) is architecturally correct,
-but the quantization propagation in HTP prevents KV data from reaching
-the attention mechanism.
-
-Do not treat raw uint16 writes, pre-scaling, or manual quantization as final
-fixes until they prove that Qwen3 can see KV values at a useful magnitude.
-With HTP scale fixed at about `1.53e-9`, a uint16 tensor can only represent
-roughly `0..0.0001` after dequantization. That is far below observed
-`key_delta` magnitudes in the hundreds.
-
-### Gate A: Runtime Encoding Audit
-
-Goal: capture the tensor encoding HTP uses after `QnnGraph_finalize`, from the
-same tensor descriptors used for `graphExecute`.
-
-Required output:
+Gate E is PASSED. ParaformerXnnpack produces correct output at 342ms decode
+latency (0.061x RTF), well within the <=1000ms product target.
 
 ```text
-For at least cache_key_0, cache_key_27, cache_value_0, cache_value_27:
-- tensor name
-- data type
-- bitwidth
-- scale
-- offset
-- min/max if available
-- tensor dimensions
+Immediate next steps:
+1. Measure peak RSS for ParaformerXnnpack and compare with ParaformerQnn
+2. Validate with more diverse audio samples (longer audio, noisy audio, etc.)
+3. Run a short Qwen3-ASR -> LiteRT + Qualcomm Delegate compatibility check before
+   starting any implementation work on that route
 ```
 
-Acceptance:
+Do not continue Qwen3 QNN HTP decoder override research unless a new
+primary-source mechanism appears. The Paraformer non-autoregressive
+architecture avoids the KV cache failure mode entirely.
+
+### Fallback Backend Policy
+
+Use this priority for Android offline backends:
 
 ```text
-The log clearly shows whether HTP runtime encoding matches model_net.json or
-uses the bad 1.525902e-09 scale.
+Primary:      ParaformerQnn
+Fallback 1:   ParaformerXnnpack (ORT + XNNPACK, 342ms)
+Fallback 2:   Qwen3AsrCpu correctness baseline (3313ms)
+Legacy:       Zipformer/Paraformer CPU streaming only when explicitly selected for comparison
+Research:     Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only
 ```
 
-If runtime encoding matches `model_net.json`, stop this task and return to
-input binding/layout diagnosis. If runtime encoding still uses `1.53e-9`,
-continue to Gate B.
+`ParaformerXnnpack` replaces generic "ORT + XNNPACK" language as the concrete
+non-QNN runtime fallback. It is intended for compatibility and debugging, not as
+the main quality route unless measured accuracy and latency justify it.
 
-### Gate B: Converter / Custom IO Route
+Do not add LiteRT, MNN, NNAPI, and XNNPACK at the same time. Each added backend
+must have a named model target, expected artifact format, and a device test plan.
 
-Goal: test only cheap routes that may preserve KV input encodings through HTP
-finalize. Route 2 already failed on the full decoder: converter output had
-`cache_key/cache_value` as FLOAT32, but HTP runtime changed them back to
-`UFIXED16 scale=1.525902e-09`.
+### Qwen3-ASR LiteRT + Qualcomm Delegate Compatibility Check
 
-Do not start a full W=128 decoder rebuild for custom IO. First run Gate B3 as a
-tiny model probe.
+This is a stop/go check, not an implementation task. The goal is to avoid another
+multi-day compatibility investigation.
 
-#### Gate B3: Tiny Custom IO QuantParam Probe
-
-Goal: prove whether `--custom_io` QuantParam can affect 16-bit APP_WRITE input
-runtime encoding on this QAIRT/HTP version.
-
-Important local evidence:
+Stop immediately if any required check fails:
 
 ```text
-G:\STTModels\qnn-work\decoder-layout-slice-probe\custom_io_template.yaml
+1. Artifact check
+   Confirm there is a real Qwen3-ASR LiteRT/TFLite artifact or a documented
+   conversion path for the exact ASR model variant. Do not start from a vague
+   "Qwen-like model" assumption.
 
-Template note:
-Datatype supports float32, float16 and uint8.
-QuantParam Scale/Offset will be ignored if the precision field for that I/O is
-not set to uint8.
+2. Signature check
+   Confirm the model exposes a LiteRT-LM-compatible prefill/decode structure or
+   an equivalent fixed API for encoder output, decoder input, position, and KV
+   cache state.
+
+3. KV cache check
+   Confirm KV cache is managed by LiteRT-LM/stateful inference or a documented
+   Qualcomm Delegate path. If KV is only represented as arbitrary raw tensors
+   without state semantics, treat the route as high risk and stop.
+
+4. Delegate support check
+   Run a minimal Qualcomm Delegate compile/init smoke on the target phone. The
+   check must prove the model is accepted by the delegate, not only by CPU
+   LiteRT.
+
+5. Token smoke check
+   If init succeeds, run one tiny prefill/decode step and compare token/logit
+   behavior against a CPU reference. Do not proceed to APK integration until this
+   is numerically plausible.
 ```
 
-This makes full decoder Route 3 low-confidence. Treat custom IO as a probe-only
-route until a tiny model proves otherwise.
-
-Required tiny probe:
+Expected result format:
 
 ```text
-Input:  one cache-like APP_WRITE tensor, shape small but 4D if possible
-Output: simple value that must change when input changes
-Run 1:  custom_io Datatype uint16 or closest available fixed16 spelling,
-        QuantParam Scale=0.015625, Offset=0
-Run 2:  custom_io Datatype uint8, QuantParam Scale=0.015625, Offset=0
-Audit:  finalized runtime dtype, scale, offset after graphFinalize
-Check:  two different input buffers change output
+Qwen3 LiteRT Qualcomm Check: PASS / FAIL / BLOCKED
+Artifact: <path or missing>
+Delegate init: <ok/fail + exact log>
+KV handling: <LiteRT-LM stateful / raw tensors / unknown>
+Token smoke: <match / mismatch / not run>
+Decision: <continue / stop>
 ```
 
-Acceptance for proceeding to the full decoder:
+### Already Completed
 
 ```text
-Runtime tensor encoding after HTP finalize keeps a scale that can represent the
-target KV magnitude, or uses a float datatype that avoids the bad 1.53e-9 range.
-The output changes when the input buffer changes.
+Gate A: runtime encoding audit
+Gate B Route 2: full decoder --preserve_io datatype float32
+Gate B3: tiny custom_io / float32 probe
+Gate B4: bridge probe for HTP override trigger (INCONCLUSIVE)
+Gate C: qnn-net-run raw-buffer probe (INCONCLUSIVE, graphFinalize 1002)
+Gate C2: APK cache-buffer probe (FAILED, no observable KV influence)
+Gate D1: CPU decoder fallback probe (CORRECT_BUT_TOO_SLOW, 3313ms decode, target <=1000ms)
+Gate E: ORT + XNNPACK Paraformer offline (PASSED, 342ms decode, XNNPACK EP active)
 ```
 
-Stop condition:
+Do not repeat these unchanged.
+
+### Gate E: COMPLETED (PASSED)
+
+Evidence from Step 30:
 
 ```text
-If the tiny custom_io probe still finalizes to UFIXED16 scale=1.525902e-09, or
-if QuantParam is ignored except for uint8, stop converter/custom_io attempts on
-the full decoder. Move to Gate C and QNN API/config investigation.
+Backend: paraformer_xnnpack
+Init: ~2.6s
+Model: model.int8.onnx (232 MB) + tokens.txt
+XNNPACK EP: active (not falling back to CPU)
+Decode: 342ms for 5.61s audio (0.061x RTF)
+Output: "对我做了介绍啊那么我想说的是呢大家如果对我的研究感兴趣呢你" (correct)
 ```
 
-Optional Route 1:
+Interpretation:
 
 ```text
-Context binary load is not a main fix path. Gate A context-binary metadata
-already reported the bad scale. Run it only if save/load code already exists and
-the cost is small, as confirmation rather than as a release path.
+ORT + XNNPACK is a viable non-QNN fallback backend for Paraformer offline.
+It delivers 342ms decode latency, well within the <=1000ms product target,
+though 4.7x slower than ParaformerQnn on HTP (73ms). The XNNPACK execution
+provider is confirmed active at runtime.
 ```
 
-Acceptance:
+### Gate C2: COMPLETED (FAILED)
+
+Evidence from Step 27:
 
 ```text
-Runtime tensor encoding for cache_key/cache_value matches the intended range:
-- key scale around 0.015625 or another range that can represent key_absmax~330
-- value scale large enough for observed value_absmax, up to about 64 in Step 21 calibration
+Run A zero:       logits_sum=-290501.69, argmax=0
+Run B maxpattern: logits_sum=-290501.69, argmax=0
+Run C realkv-like: logits_sum=-290501.69, argmax=0
+key_delta_0/value_delta_0 metrics also identical.
 ```
 
-Then rerun:
+Interpretation:
 
 ```text
-KV Influence Probe
-Decoder smoke test
+The current-token path still works, but past-KV cache inputs have no observable
+effect. This blocks correct multi-token autoregressive decoding on HTP.
 ```
 
-If KV Influence Probe passes, proceed to first-step reference alignment. If it
-still fails despite correct runtime encoding, investigate APP_WRITE buffer
-binding and layout.
+### Gate D1: COMPLETED (CORRECT BUT TOO SLOW)
 
-### Gate C: Diagnostic Raw-Buffer Probe
-
-Goal: determine whether HTP reads the APP_WRITE cache buffers at all.
-
-This is not a final quality fix.
-
-Run two probes:
+Evidence from Step 28:
 
 ```text
-Probe 1: write all-zero raw cache buffers
-Probe 2: write max-pattern raw uint16 cache buffers
+Backend: qwen3_asr_cpu
+Init: 6,745 ms, RSS 1,457,320 KB
+Decode: 3,313 ms for 5,611 ms audio (0.59x RTF)
+Peak RSS: 1,661,192 KB (~1.6 GB)
+Output: "对我做了介绍啊。那么我想说的是呢，大家如果对我的研究感兴趣呢。" (correct)
 ```
 
-Acceptance:
+Interpretation:
 
 ```text
-If logits change, HTP reads the cache buffers but scale/range is unusable.
-If logits do not change, focus on input binding, graph connectivity, or layout.
+CPU decoder is viable as a correctness baseline and fallback, but it misses the
+product latency target. User requires <=1000ms per recognition segment; measured
+decode time is 3313ms.
+```
+
+### Historical Task: Gate D3 Low-Latency Model / Runtime Selection
+
+Gate D3 must find a path that can plausibly hit <=1000ms per segment while
+keeping Chinese ASR quality acceptable. Do not spend more time making Qwen3AsrCpu
+the default as the main product path.
+
+```text
+Latency target:
+  <=1000ms recognition latency per segment on the target phone.
+
+Resolved candidates:
+1. Paraformer QNN HTP passed and is the current production path
+2. ORT + XNNPACK is the preferred non-QNN fallback to add next
+3. Qwen3-ASR LiteRT + Qualcomm Delegate is research-only until the minimal
+   compatibility check passes
+4. Cloud/API mode remains optional high-quality fallback, not offline default
+```
+
+Keep Qwen3AsrCpu as a correctness baseline for comparing output quality.
+
+### Gate D Candidate Routes
+
+Evaluate these routes in order. Stop as soon as one route has enough evidence
+to become the next implementation direction.
+
+#### Route D1: CPU Decoder Fallback
+
+Goal:
+
+```text
+Keep the QNN encoder path if useful, but run the Qwen3 decoder on CPU/ORT or
+another CPU-capable runtime where KV cache is numerically correct.
+```
+
+First validation:
+
+```text
+Measure one prompt decode on device CPU:
+- init memory
+- first token latency
+- token/s after KV warmup
+- whether output matches ORT reference for 3-step smoke
+```
+
+Accept if:
+
+```text
+Latency is high but usable enough for a fallback or quality mode, and smoke
+matches reference.
+```
+
+Reject if:
+
+```text
+Memory or latency is clearly unusable on target phone.
+```
+
+#### Route D2: Split Decoder / HTP Current Token + CPU KV Attention
+
+Goal:
+
+```text
+Keep HTP for parts that work, but move KV-dependent attention/cache math to CPU.
+```
+
+First validation:
+
+```text
+Write a design doc only. Do not implement until D1 has measured data.
+This route likely requires graph surgery and host-side attention, so it is high risk.
+```
+
+#### Route D3: Different Mobile Runtime Or Model (RESOLVED)
+
+Goal:
+
+```text
+Evaluate lower-latency ASR models/runtimes that can plausibly meet <=1000ms
+per segment on-device.
+```
+
+First validation:
+
+```text
+Paraformer QNN HTP has been selected. The remaining runtime work is fallback and
+research:
+
+```text
+Fallback: ORT + XNNPACK
+Research: Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check
+```
+```
+
+#### Route D4: Continue QNN HTP Escape Hatch Research
+
+Only continue this if a new primary-source QNN mechanism is identified:
+
+```text
+QNN API path that forces input encoding at graphFinalize
+HTP-supported graph form that prevents cache input encoding override
+documented backend config that changes large-graph IO encoding behavior
+```
+
+Do not repeat:
+
+```text
+quant_overrides only
+--preserve_io datatype on compute graphs
+small bridge probes B4-0..B4-6
+qnn-net-run on the 912 MB decoder without a new runtime setup hypothesis
+```
+
+### Recommended Next Action
+
+This section is historical. Do not create a new CPU fallback plan from this
+section. Current actionable work is:
+
+```text
+1. Test 10s Paraformer QNN model
+2. Add backend selection UI
+3. Add ORT + XNNPACK fallback
+4. Run Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only as a
+   bounded research probe
+```
+
+### Documentation To Update After Gate D
+
+```text
+docs/architecture/QWEN3_QNN_DECODER_EXPERIMENT_LOG.md
+docs/architecture/QWEN3_QNN_NEXT_TASKS_FOR_AI.md
+```
+
+Required result format:
+
+```text
+Gate D: LOW_LATENCY_CANDIDATE_SELECTED / NEEDS_MODEL_EVAL / NO_LOCAL_OFFLINE_PATH
+Next: <specific implementation route>
 ```
 
 ### Files To Inspect
@@ -378,6 +522,7 @@ src/mobile/app/src/main/cpp/qwen3_qnn_backend.h
 src/mobile/app/src/main/cpp/stt_engine.cpp
 third_party/sherpa-onnx-src/sherpa-onnx/csrc/offline-recognizer-qwen3-asr-impl.cc
 docs/architecture/QWEN3_QNN_DECODER_EXPERIMENT_LOG.md
+docs/architecture/QWEN3_QNN_ANDROID_INTEGRATION_SPEC.md
 ```
 
 ### Reference Implementation
@@ -392,8 +537,9 @@ and attention masking for Qwen3-ASR.
 ## One-Line Task
 
 ```text
-Determine whether QNN HTP can preserve or bypass usable cache_key/cache_value
-input encodings. First audit finalized runtime encodings, then test context
-binary/custom-IO/float32 routes, and use raw-buffer writes only as a diagnostic
-probe for APP_WRITE buffer connectivity.
+Gate E proved ORT + XNNPACK Paraformer offline works at 342ms decode (0.061x RTF).
+ParaformerQnn is the production path (73ms). ParaformerXnnpack is the non-QNN
+fallback (342ms). Qwen3AsrCpu remains as correctness baseline (3313ms).
+Next: measure peak RSS, validate with diverse audio, and run the LiteRT
+compatibility check.
 ```
