@@ -178,7 +178,14 @@ public class SttForegroundService extends Service {
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
 
-        // Paraformer QNN is the production path (73ms decode, HTP)
+        // SenseVoice QNN is the default production path
+        if ((new File(sensevoice, "model.bin").exists()
+                || new File(sensevoice, "libmodel.so").exists())
+                && new File(sensevoice, "tokens.txt").exists()) {
+            return sensevoice.getAbsolutePath();
+        }
+
+        // Paraformer QNN is the fast alternative (73ms decode, HTP)
         File paraformerQnn = new File(root, "paraformer-qnn");
         if (new File(paraformerQnn, "libencoder.so").exists()
                 && new File(paraformerQnn, "libpredictor.so").exists()
@@ -187,8 +194,6 @@ public class SttForegroundService extends Service {
             Log.i(TAG, "Found Paraformer QNN model at: " + paraformerQnn.getAbsolutePath());
             return paraformerQnn.getAbsolutePath();
         }
-
-        if ((new File(sensevoice, "model.bin").exists()
                 || new File(sensevoice, "libmodel.so").exists())
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();

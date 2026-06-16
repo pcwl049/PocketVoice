@@ -167,19 +167,20 @@ public class MainActivity extends Activity {
         File paraformer = new File(root, "paraformer");
         File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
 
-        // Paraformer QNN is the production path (73ms decode, HTP)
+        // SenseVoice QNN is the default production path
+        if ((new File(sensevoice, "model.bin").exists()
+                || new File(sensevoice, "libmodel.so").exists())
+                && new File(sensevoice, "tokens.txt").exists()) {
+            return sensevoice.getAbsolutePath();
+        }
+
+        // Paraformer QNN is the fast alternative (73ms decode, HTP)
         File paraformerQnn = new File(root, "paraformer-qnn");
         if (new File(paraformerQnn, "libencoder.so").exists()
                 && new File(paraformerQnn, "libpredictor.so").exists()
                 && new File(paraformerQnn, "libdecoder.so").exists()
                 && new File(paraformerQnn, "tokens.txt").exists()) {
             return paraformerQnn.getAbsolutePath();
-        }
-
-        if ((new File(sensevoice, "model.bin").exists()
-                || new File(sensevoice, "libmodel.so").exists())
-                && new File(sensevoice, "tokens.txt").exists()) {
-            return sensevoice.getAbsolutePath();
         }
 
         // Paraformer XNNPACK offline (quality fallback for mixed-language)
