@@ -772,6 +772,7 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         SherpaOnnxOfflineRecognizerConfig config;
         memset(&config, 0, sizeof(config));
         config.model_config.paraformer.model = paraformerOfflineModel.c_str();
+        config.model_config.tokens = tokensPath.c_str();
         config.model_config.model_type = "paraformer";
         config.model_config.provider = "xnnpack";
         config.model_config.num_threads = cpuFallbackThreads;
