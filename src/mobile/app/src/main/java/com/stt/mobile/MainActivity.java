@@ -166,8 +166,38 @@ public class MainActivity extends Activity {
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
         File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
-        
-        // Qwen3 QNN has highest priority
+
+        // Paraformer QNN is the production path (73ms decode, HTP)
+        File paraformerQnn = new File(root, "paraformer-qnn");
+        if (new File(paraformerQnn, "libencoder.so").exists()
+                && new File(paraformerQnn, "libpredictor.so").exists()
+                && new File(paraformerQnn, "libdecoder.so").exists()
+                && new File(paraformerQnn, "tokens.txt").exists()) {
+            return paraformerQnn.getAbsolutePath();
+        }
+
+        if ((new File(sensevoice, "model.bin").exists()
+                || new File(sensevoice, "libmodel.so").exists())
+                && new File(sensevoice, "tokens.txt").exists()) {
+            return sensevoice.getAbsolutePath();
+        }
+
+        // Paraformer XNNPACK offline (quality fallback for mixed-language)
+        File paraformerOffline = new File(root, "paraformer-offline");
+        if (paraformerOffline.exists() && new File(paraformerOffline, "tokens.txt").exists()
+                && (new File(paraformerOffline, "model.int8.onnx").exists()
+                    || new File(paraformerOffline, "model.onnx").exists())) {
+            Log.i(TAG, "Found Paraformer offline model at: " + paraformerOffline.getAbsolutePath());
+            return paraformerOffline.getAbsolutePath();
+        }
+
+        if (new File(zipformer, "model.int8.onnx").exists()
+                && new File(zipformer, "bbpe.model").exists()
+                && new File(zipformer, "tokens.txt").exists()) {
+            return zipformer.getAbsolutePath();
+        }
+
+        // Qwen3 QNN is known broken (HTP KV cache override), kept as last resort
         if (new File(qwen3Qnn, "decoder-w4/libmodel.so").exists()
                 && new File(qwen3Qnn, "conv_frontend/libmodel.so").exists()
                 && new File(qwen3Qnn, "encoder/libmodel.so").exists()
@@ -176,38 +206,14 @@ public class MainActivity extends Activity {
                 && new File(qwen3QnnTokenizer, "tokenizer_config.json").exists()) {
             return qwen3Qnn.getAbsolutePath();
         }
-        
+
         if (new File(qwen3, "conv_frontend.onnx").exists()
                 && new File(qwen3, "encoder.int8.onnx").exists()
                 && new File(qwen3, "decoder.int8.onnx").exists()
                 && new File(qwen3, "tokenizer").exists()) {
             return qwen3.getAbsolutePath();
         }
-        if ((new File(sensevoice, "model.bin").exists()
-                || new File(sensevoice, "libmodel.so").exists())
-                && new File(sensevoice, "tokens.txt").exists()) {
-            return sensevoice.getAbsolutePath();
-        }
-        File paraformerQnn = new File(root, "paraformer-qnn");
-        if (new File(paraformerQnn, "libencoder.so").exists()
-                && new File(paraformerQnn, "libpredictor.so").exists()
-                && new File(paraformerQnn, "libdecoder.so").exists()
-                && new File(paraformerQnn, "tokens.txt").exists()) {
-            return paraformerQnn.getAbsolutePath();
-        }
-        if (new File(zipformer, "model.int8.onnx").exists()
-                && new File(zipformer, "bbpe.model").exists()
-                && new File(zipformer, "tokens.txt").exists()) {
-            return zipformer.getAbsolutePath();
-        }
-        // Paraformer XNNPACK (offline, single model.onnx with XNNPACK execution provider)
-        File paraformerOffline = new File(root, "paraformer-offline");
-        if (paraformerOffline.exists() && new File(paraformerOffline, "tokens.txt").exists()
-                && (new File(paraformerOffline, "model.int8.onnx").exists()
-                    || new File(paraformerOffline, "model.onnx").exists())) {
-            Log.i(TAG, "Found Paraformer offline model at: " + paraformerOffline.getAbsolutePath());
-            return paraformerOffline.getAbsolutePath();
-        }
+
         return paraformer.getAbsolutePath();
     }
 
