@@ -304,6 +304,35 @@ Token smoke: <match / mismatch / not run>
 Decision: <continue / stop>
 ```
 
+### LiteRT Compatibility Check Result
+
+```text
+Qwen3 LiteRT Qualcomm Check: FAIL (Check 4)
+Artifact: litert-community/Qwen3-ASR-0.6B (TFLite, Qualcomm-specific builds exist)
+          soniqo/Qwen3-ASR-0.6B-Encoder-LiteRT-INT8 (encoder only)
+Delegate init: Qualcomm delegate exists (HTP/DSP/GPU), but NPU LLM executor
+               hardcodes Gemma3 signatures only
+KV handling: LiteRT-LM has full KV cache management (serialize/batch/resize)
+Token smoke: not run (blocked by Check 4)
+Decision: STOP
+```
+
+Rationale:
+
+1. litert-community TFLite files are fixed-5s end-to-end models (not .litertlm
+   format), cannot leverage LiteRT-LM's KV cache and prefill/decode separation
+
+2. NPU LLM executor hardcodes Gemma3 model signatures (prefill_embedder_128,
+   decode_embedder, etc.). Qwen3 decoder can only use CPU/GPU backends via
+   LiteRT-LM, which offers no HTP acceleration advantage over current approach
+
+3. soniqo's README confirms: "the text decoder is a full Qwen3-0.6B LM...
+   it cannot fit cleanly into a single .tflite file" — same decoder compatibility
+   issue we already encountered with QNN HTP
+
+4. If LiteRT-LM NPU executor extends to support Qwen3 in the future, this route
+   can be re-evaluated. Until then, it adds framework overhead without HTP benefit.
+
 ### Already Completed
 
 ```text
@@ -315,6 +344,7 @@ Gate C: qnn-net-run raw-buffer probe (INCONCLUSIVE, graphFinalize 1002)
 Gate C2: APK cache-buffer probe (FAILED, no observable KV influence)
 Gate D1: CPU decoder fallback probe (CORRECT_BUT_TOO_SLOW, 3313ms decode, target <=1000ms)
 Gate E: ORT + XNNPACK Paraformer offline (PASSED, 342ms decode, XNNPACK EP active)
+LiteRT check: Qwen3-ASR LiteRT + Qualcomm Delegate (FAIL, NPU executor Gemma3-only)
 ```
 
 Do not repeat these unchanged.
@@ -541,9 +571,10 @@ and attention masking for Qwen3-ASR.
 ## One-Line Task
 
 ```text
-Gate E proved ORT + XNNPACK Paraformer offline works at 342ms decode (0.061x RTF).
-ParaformerQnn is the production path (73ms). ParaformerXnnpack is the non-QNN
-fallback (342ms). Qwen3AsrCpu remains as correctness baseline (3313ms).
-Next: measure peak RSS, validate with diverse audio, and run the LiteRT
-compatibility check.
+Gate E proved ORT + XNNPACK Paraformer offline works at 342ms decode (0.061x RTF)
+with correct mixed-language output. ParaformerQnn is fastest (143ms) but degrades
+English. ParaformerXnnpack is the quality-first path for mixed CN+EN.
+LiteRT+Qualcomm route stopped: NPU executor hardcodes Gemma3 signatures only.
+Next: investigate 10s ParaformerQnn quality, or expand ParaformerXnnpack to
+handle longer audio with the offline model.
 ```
