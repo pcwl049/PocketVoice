@@ -194,10 +194,6 @@ public class SttForegroundService extends Service {
             Log.i(TAG, "Found Paraformer QNN model at: " + paraformerQnn.getAbsolutePath());
             return paraformerQnn.getAbsolutePath();
         }
-                || new File(sensevoice, "libmodel.so").exists())
-                && new File(sensevoice, "tokens.txt").exists()) {
-            return sensevoice.getAbsolutePath();
-        }
 
         // Paraformer XNNPACK offline (quality fallback for mixed-language)
         File paraformerOffline = new File(root, "paraformer-offline");

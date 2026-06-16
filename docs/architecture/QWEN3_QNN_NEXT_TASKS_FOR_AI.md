@@ -243,14 +243,19 @@ architecture avoids the KV cache failure mode entirely.
 Use this priority for Android offline backends (updated in code, both Java and C++):
 
 ```text
-1. ParaformerQnn            (143ms, QNN HTP, production path)
-2. SenseVoiceQnn            (QNN HTP, legacy)
+1. SenseVoiceQnn            (QNN HTP, default production path)
+2. ParaformerQnn            (143ms, QNN HTP, fast alternative)
 3. ParaformerXnnpack        (375ms, ORT+XNNPACK, quality fallback for mixed CN+EN)
 4. ZipformerCtc             (CPU streaming, legacy)
 5. Qwen3AsrQnn              (KNOWN BROKEN: HTP KV cache override, last resort only)
 6. Qwen3AsrCpu              (3313ms, correctness baseline only)
 7. Paraformer (streaming)   (CPU streaming, legacy fallback)
 ```
+
+SenseVoiceQnn is the default because it handles short-character and
+mixed-language input better than ParaformerQnn (which merges repeated
+short characters like 一一→一 and severely degrades English). ParaformerQnn
+remains available as a fast alternative for pure-Chinese use cases.
 
 Qwen3AsrQnn was demoted from highest priority because its HTP KV cache
 override is confirmed unfixable (Gates 8-15, A-C2). It should only be
@@ -548,10 +553,10 @@ This section is historical. Do not create a new CPU fallback plan from this
 section. Current actionable work is:
 
 ```text
-1. Add backend selection UI
-2. Decide the default backend policy for pure Chinese vs mixed CN+EN
-3. Keep ParaformerXnnpack as the preferred non-QNN fallback
-4. Keep Qwen3 routes as closed research unless a new primary-source runtime path appears
+1. SenseVoiceQnn is the default backend (better short-char and mixed-language handling)
+2. ParaformerQnn is available as fast alternative for pure-Chinese (143ms)
+3. ParaformerXnnpack is the preferred non-QNN fallback (375ms, correct English)
+4. Qwen3 routes remain closed research unless a new primary-source runtime path appears
 ```
 
 ### Documentation To Update After Gate D
@@ -591,9 +596,8 @@ and attention masking for Qwen3-ASR.
 ## One-Line Task
 
 ```text
-Gate E proved ORT + XNNPACK Paraformer offline works at 342ms decode (0.061x RTF)
-with correct mixed-language output. ParaformerQnn is fastest (143ms) but degrades
-English. ParaformerXnnpack is the quality-first path for mixed CN+EN.
-LiteRT+Qualcomm route stopped: NPU executor hardcodes Gemma3 signatures only.
-Next: move to backend-selection product work and keep the Qwen3 decoder route closed.
+SenseVoiceQnn is the default backend (better short-char and mixed-language quality).
+ParaformerQnn (143ms) and ParaformerXnnpack (375ms) are available alternatives.
+Qwen3 QNN HTP is demoted (broken KV cache). LiteRT route stopped.
+Default backend can be switched by changing which model directory is present on device.
 ```
