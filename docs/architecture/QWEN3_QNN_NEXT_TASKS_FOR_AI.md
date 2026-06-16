@@ -241,16 +241,20 @@ architecture avoids the KV cache failure mode entirely.
 Use this priority for Android offline backends:
 
 ```text
-Primary:      ParaformerQnn
-Fallback 1:   ParaformerXnnpack (ORT + XNNPACK, 342ms)
-Fallback 2:   Qwen3AsrCpu correctness baseline (3313ms)
-Legacy:       Zipformer/Paraformer CPU streaming only when explicitly selected for comparison
-Research:     Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only
+Primary (pure Chinese):    ParaformerQnn (143ms, QNN HTP)
+Primary (mixed CN+EN):     ParaformerXnnpack (375ms, ORT+XNNPACK, correct English)
+Fallback:                  Qwen3AsrCpu correctness baseline (3313ms)
+Legacy:                    Zipformer/Paraformer CPU streaming only when explicitly selected
+Research:                  Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only
 ```
 
-`ParaformerXnnpack` replaces generic "ORT + XNNPACK" language as the concrete
-non-QNN runtime fallback. It is intended for compatibility and debugging, not as
-the main quality route unless measured accuracy and latency justify it.
+**Quality finding (Step 30):** ParaformerQnn 5s model severely degrades English
+output in mixed-language audio (e.g., "always" → "o s o s", "frequently" →
+"f r e e e e n t"). ParaformerXnnpack handles Chinese+English correctly.
+For VRChat use cases with mixed-language input, ParaformerXnnpack is the
+preferred backend despite being 2.6x slower.
+
+RSS: ParaformerXnnpack 562-589 MB, ParaformerQnn 246-1221 MB.
 
 Do not add LiteRT, MNN, NNAPI, and XNNPACK at the same time. Each added backend
 must have a named model target, expected artifact format, and a device test plan.

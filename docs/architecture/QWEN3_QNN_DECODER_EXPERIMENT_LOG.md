@@ -3604,3 +3604,40 @@ XNNPACK EP: active
 Output: correct Chinese text
 Next: measure peak RSS, validate with diverse audio, LiteRT compatibility check
 ```
+
+### RSS and Quality Comparison (Step 30 continued)
+
+RSS measurement after init and recognition:
+
+```text
+Backend              | VmRSS (after init) | VmRSS (after recognize) | Decode (5.61s audio)
+ParaformerXnnpack    | 562 MB             | 589 MB                  | 375 ms
+ParaformerQnn (HTP)  | 1,221 MB           | 246 MB                  | 143 ms
+```
+
+ParaformerQnn init RSS is higher due to QNN HTP DSP shared memory mapping.
+After recognition, QNN releases some DSP mappings; Xnnpack keeps model weights
+resident (+26 MB delta).
+
+Diverse audio test revealed a critical quality difference:
+
+```text
+Audio            | ParaformerXnnpack              | ParaformerQnn (5s model)
+Pure Chinese     | Correct                        | Mostly correct
+Mixed CN+EN      | Correct ("always", "frequently")| English garbled ("o s o s", "f r e e e e n t")
+```
+
+The ParaformerQnn 5s model (QNN-compiled from sherpa-onnx) produces severely
+degraded English output in mixed-language audio. ParaformerXnnpack (ONNX model
+from FunASR/ModelScope) handles Chinese+English correctly. This makes
+ParaformerXnnpack not just a fallback but potentially the preferred backend
+for mixed-language use cases.
+
+```text
+Gate E (extended): PASSED with quality advantage
+ParaformerXnnpack RSS: 562-589 MB (acceptable)
+ParaformerQnn RSS: 246-1221 MB (higher init, lower after recognize)
+Quality: ParaformerXnnpack > ParaformerQnn for mixed-language audio
+Speed: ParaformerQnn (143ms) > ParaformerXnnpack (375ms)
+Tradeoff: QNN is 2.6x faster but English quality is severely degraded
+```
