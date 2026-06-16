@@ -62,8 +62,9 @@ Backend priority on Android:
   Fallback 1:   ParaformerXnnpack (342ms, ORT + XNNPACK)
   Fallback 2:   Qwen3AsrCpu (3313ms, correctness baseline)
 
-NEXT: Measure peak RSS for ParaformerXnnpack, validate with more diverse audio
-samples, and run the Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check.
+NEXT: backend research is no longer the priority. Gate E is done, the LiteRT
+route is stopped, and the 10s ParaformerQnn check did not unlock a better path.
+The next product task should move to backend selection policy and UI exposure.
 ```
 
 ## Confirmed Evidence
@@ -219,17 +220,18 @@ src/mobile/app/src/main/cpp/qwen3_qnn_backend.cpp
 src/mobile/app/src/main/cpp/qwen3_qnn_backend.h
 ```
 
-## Next Task: Peak RSS Measurement, Diverse Audio Validation, and LiteRT Compatibility Check
+## Current Product Direction
 
 Gate E is PASSED. ParaformerXnnpack produces correct output at 342ms decode
 latency (0.061x RTF), well within the <=1000ms product target.
 
 ```text
-Immediate next steps:
-1. Measure peak RSS for ParaformerXnnpack and compare with ParaformerQnn
-2. Validate with more diverse audio samples (longer audio, noisy audio, etc.)
-3. Run a short Qwen3-ASR -> LiteRT + Qualcomm Delegate compatibility check before
-   starting any implementation work on that route
+Current state:
+1. ParaformerQnn remains the low-latency Android primary backend
+2. ParaformerXnnpack is the preferred mixed-language quality path
+3. Qwen3-ASR LiteRT + Qualcomm Delegate is already stopped
+4. The tested 10s ParaformerQnn path did not produce a useful product change
+5. The next product-facing task is backend selection policy plus UI exposure
 ```
 
 Do not continue Qwen3 QNN HTP decoder override research unless a new
@@ -238,15 +240,21 @@ architecture avoids the KV cache failure mode entirely.
 
 ### Fallback Backend Policy
 
-Use this priority for Android offline backends:
+Use this priority for Android offline backends (updated in code, both Java and C++):
 
 ```text
-Primary (pure Chinese):    ParaformerQnn (143ms, QNN HTP)
-Primary (mixed CN+EN):     ParaformerXnnpack (375ms, ORT+XNNPACK, correct English)
-Fallback:                  Qwen3AsrCpu correctness baseline (3313ms)
-Legacy:                    Zipformer/Paraformer CPU streaming only when explicitly selected
-Research:                  Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only
+1. ParaformerQnn            (143ms, QNN HTP, production path)
+2. SenseVoiceQnn            (QNN HTP, legacy)
+3. ParaformerXnnpack        (375ms, ORT+XNNPACK, quality fallback for mixed CN+EN)
+4. ZipformerCtc             (CPU streaming, legacy)
+5. Qwen3AsrQnn              (KNOWN BROKEN: HTP KV cache override, last resort only)
+6. Qwen3AsrCpu              (3313ms, correctness baseline only)
+7. Paraformer (streaming)   (CPU streaming, legacy fallback)
 ```
+
+Qwen3AsrQnn was demoted from highest priority because its HTP KV cache
+override is confirmed unfixable (Gates 8-15, A-C2). It should only be
+selected when no other backend is available.
 
 **Quality finding (Step 30):** ParaformerQnn 5s model severely degrades English
 output in mixed-language audio (e.g., "always" → "o s o s", "frequently" →
@@ -540,11 +548,10 @@ This section is historical. Do not create a new CPU fallback plan from this
 section. Current actionable work is:
 
 ```text
-1. Test 10s Paraformer QNN model
-2. Add backend selection UI
-3. Add ORT + XNNPACK fallback
-4. Run Qwen3-ASR LiteRT + Qualcomm Delegate compatibility check only as a
-   bounded research probe
+1. Add backend selection UI
+2. Decide the default backend policy for pure Chinese vs mixed CN+EN
+3. Keep ParaformerXnnpack as the preferred non-QNN fallback
+4. Keep Qwen3 routes as closed research unless a new primary-source runtime path appears
 ```
 
 ### Documentation To Update After Gate D
@@ -588,6 +595,5 @@ Gate E proved ORT + XNNPACK Paraformer offline works at 342ms decode (0.061x RTF
 with correct mixed-language output. ParaformerQnn is fastest (143ms) but degrades
 English. ParaformerXnnpack is the quality-first path for mixed CN+EN.
 LiteRT+Qualcomm route stopped: NPU executor hardcodes Gemma3 signatures only.
-Next: investigate 10s ParaformerQnn quality, or expand ParaformerXnnpack to
-handle longer audio with the offline model.
+Next: move to backend-selection product work and keep the Qwen3 decoder route closed.
 ```
