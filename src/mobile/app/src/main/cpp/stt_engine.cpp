@@ -933,12 +933,13 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     }
 #endif
 
-    if (!useZipformer && !useParaformer) {
+    if (!useZipformer && !useParaformer && !useParaformerXnnpack) {
         LOGE("No supported model set found in %s", modelDir.c_str());
         LOGE("Expected SenseVoice QNN: model.bin/libmodel.so + tokens.txt");
         LOGE("Expected Zipformer CTC: model.int8.onnx + bbpe.model + tokens.txt");
         LOGE("Expected Paraformer fallback: encoder.int8.onnx + decoder.int8.onnx + tokens.txt");
         LOGE("Expected Paraformer QNN: libencoder.so + libpredictor.so + libdecoder.so + tokens.txt");
+        LOGE("Expected Paraformer XNNPACK: model.int8.onnx or model.onnx + tokens.txt");
 #if STT_USE_QNN
         LOGE("Expected Qwen3-ASR CPU: conv_frontend.onnx + encoder.int8.onnx + decoder.int8.onnx + tokenizer/");
 #endif
