@@ -123,6 +123,27 @@ assert(
   "STT engine should implement the Qwen3-ASR CPU offline recognizer path",
 );
 assert(
+  engineSource.includes("buildQwen3Prompt") &&
+    engineSource.includes("extractQwen3WhisperFeatures") &&
+    engineSource.includes("generateQwen3Text") &&
+    engineSource.includes("cleanQwen3GeneratedIds") &&
+    engineSource.includes("removeUtf8ReplacementChars") &&
+    engineSource.includes("<|endoftext|>") &&
+    engineSource.includes("[DIAG-gen] stop ids") &&
+    !engineSource.includes("for (int step = 0; step < 3; step++)") &&
+    !engineSource.includes("int inputToken = 0; // Start token"),
+  "Qwen3 QNN path should use real features, prompt construction, special-token stops, and cleaned full-token decoding instead of the old 3-step probe",
+);
+const qwen3QnnBackendSource = fs.readFileSync(
+  path.join(root, "src/mobile/app/src/main/cpp/qwen3_qnn_backend.cpp"),
+  "utf8",
+);
+assert(
+  !qwen3QnnBackendSource.includes("Conv frontend: stub (not yet integrated)") &&
+    !qwen3QnnBackendSource.includes("Encoder: stub (not yet integrated)"),
+  "Qwen3 QNN backend should not keep stub conv frontend or encoder methods",
+);
+assert(
   mainActivity.includes("\"sensevoice\"") &&
     mainActivity.includes("model.bin") &&
     mainActivity.includes("libmodel.so") &&
@@ -256,9 +277,11 @@ assert(
 );
 assert(
   uiStyles.includes("prefers-reduced-motion") &&
-    uiStyles.includes("room-light-a") &&
-    uiStyles.includes("background: var(--bg)") &&
+    uiStyles.includes(".ambient") &&
+    uiStyles.includes("@keyframes drift-a") &&
+    uiStyles.includes("background: var(--bg);") &&
     uiStyles.includes("width: 100%") &&
+    uiStyles.includes("min-height: 100dvh") &&
     uiStyles.includes("overflow-wrap: anywhere") &&
     uiStyles.includes("flex: 0 0 auto") &&
     uiStyles.includes(".log-panel") &&
@@ -273,10 +296,11 @@ assert(
     uiApp.includes("formatBackend") &&
     uiApp.includes("cpuFallback") &&
     uiApp.includes("setCacheEnabled") &&
+    uiApp.includes("statusText(status)") &&
     uiApp.includes("setInterval") &&
     uiApp.includes("500") &&
     uiApp.includes('status === "stopped"') &&
-    uiApp.includes("\\u7b49\\u5f85"),
+    uiApp.includes('status: "stopped"'),
   "WebView JS should poll the STT bridge snapshot for status updates",
 );
 assert(

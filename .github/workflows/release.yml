@@ -1,0 +1,91 @@
+name: Release Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.1-preview
+        required: true
+      title:
+        description: Release title
+        required: true
+      prerelease:
+        description: Mark as prerelease
+        required: true
+        default: "true"
+      target:
+        description: Target branch or commit
+        required: false
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          # PocketVoice
+
+          PocketVoice 是面向 VRChat ChatBox 的本地离线语音转文字工具。
+
+          ## 本版重点
+
+          - 更新 Android 端界面与服务管理体验。
+          - 支持识别策略切换，覆盖标准中文、极速、中英兼顾和兼容兜底路径。
+          - 支持通过 zip 导入模型包。
+          - 当前发布流程区分云端草稿发布与本地正式构建产物。
+
+          ## 下载文件
+
+          该 workflow 只负责创建或更新 GitHub Release 草稿，不在云端自动构建完整产物。
+
+          建议附加的本地产物：
+
+          - `PocketVoice-preview.zip`
+          - `sensevoice.zip`
+          - `paraformer-qnn.zip`
+          - `paraformer-offline.zip`
+
+          ## 已知说明
+
+          - Android / QNN / 模型运行时依赖目前仍以本地构建环境为准。
+          - 真机 QNN 验证、完整 APK 构建和模型打包不在当前云端 workflow 内执行。
+          - 发布前仍应在本地完成完整构建与验收。
+
+          ## 许可说明
+
+          PocketVoice 使用 Apache License 2.0。第三方组件和模型许可请随正式发布产物一并附带。
+          EOF
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TITLE: ${{ inputs.title }}
+          RELEASE_TARGET: ${{ inputs.target }}
+          RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --draft=$( [ "$RELEASE_PRERELEASE" = "true" ] && echo true || echo true ) \
+              $( [ "$RELEASE_PRERELEASE" = "true" ] && echo --prerelease )
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --target "$RELEASE_TARGET" \
+              --notes-file release-notes.md \
+              --draft \
+              $( [ "$RELEASE_PRERELEASE" = "true" ] && echo --prerelease )
+          fi

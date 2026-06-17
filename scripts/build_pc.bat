@@ -156,7 +156,9 @@ copy /Y "%SHERPA_DIR%\bin\*.dll" "%BUILD_DIR%\" >nul
 
 echo.
 echo [4/5] Copying config...
-copy /Y "%ROOT_DIR%\config.json" "%BUILD_DIR%\" >nul
+if exist "%ROOT_DIR%\config.json" (
+  copy /Y "%ROOT_DIR%\config.json" "%BUILD_DIR%\" >nul
+)
 if not exist "%BUILD_DIR%\models\fireredvad" mkdir "%BUILD_DIR%\models\fireredvad"
 copy /Y "%ROOT_DIR%\models\fireredvad\fireredvad_stream_vad_with_cache.onnx" "%BUILD_DIR%\models\fireredvad\" >nul
 copy /Y "%ROOT_DIR%\models\fireredvad\cmvn.ark" "%BUILD_DIR%\models\fireredvad\" >nul

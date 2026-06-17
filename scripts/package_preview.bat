@@ -54,7 +54,7 @@ mkdir "%LICENSE_DIR%"
 
 copy /Y "%PC_BUILD%\stt_pc.exe" "%PACKAGE_DIR%\PocketVoice.exe" >nul
 copy /Y "%PC_BUILD%\*.dll" "%PACKAGE_DIR%\" >nul
-copy /Y "%PC_BUILD%\config.json" "%PACKAGE_DIR%\" >nul
+if exist "%PC_BUILD%\config.json" copy /Y "%PC_BUILD%\config.json" "%PACKAGE_DIR%\" >nul
 if exist "%ROOT_DIR%\LICENSE" copy /Y "%ROOT_DIR%\LICENSE" "%LICENSE_DIR%\POCKETVOICE_LICENSE.txt" >nul
 if exist "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" copy /Y "%ROOT_DIR%\THIRD_PARTY_NOTICES.txt" "%PACKAGE_DIR%\THIRD_PARTY_NOTICES.txt" >nul
 if exist "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" copy /Y "%ROOT_DIR%\third_party\sherpa-onnx-src\LICENSE" "%LICENSE_DIR%\SHERPA_ONNX_LICENSE.txt" >nul
@@ -80,15 +80,15 @@ if exist "%MOBILE_BUILD%\app-signed.apk" (
 )
 
 > "%PACKAGE_DIR%\README.txt" (
-  echo PocketVoice preview
+  echo PocketVoice v0.1.1-preview
   echo.
-  echo 1. Install PocketVoice-Android.apk on the phone.
-  echo 2. Enable USB debugging and connect the phone by USB.
-  echo 3. Open the Android app and start the service.
-  echo 4. Run PocketVoice.exe on the PC.
+  echo Included files:
+  echo - PocketVoice.exe : Windows desktop app
+  echo - PocketVoice-Android.apk : Android app
+  echo - adb\ : bundled adb runtime for USB forwarding
+  echo - licenses\ : project and third-party license files
   echo.
-  echo The PC app uses bundled adb files from the adb folder to create USB port forwarding automatically.
-  echo VRChat OSC / ChatBox must be enabled separately.
+  echo Full usage and project information are in the repository README.
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%PACKAGE_DIR%' -DestinationPath '%ZIP_PATH%' -Force"
