@@ -74,15 +74,17 @@ add_library(stt_native SHARED
     ${SHERPA_ONNX_DIR}/sherpa-onnx-src/sherpa-onnx/csrc/qwen-asr-tokenizer.cc
 )
 
-# QNN SDK headers for qwen3_qnn_backend.cpp
-set(QNN_SDK_DIR "G:/Program Files/qairt/2.45.0.260326")
-set(QNN_INCLUDE_DIR "${QNN_SDK_DIR}/include/QNN")
-set(QNN_SAMPLE_INCLUDE_DIR "${QNN_SDK_DIR}/examples/QNN/SampleApp/SampleApp/src")
-target_include_directories(stt_native PRIVATE
-    ${QNN_INCLUDE_DIR}
-    ${QNN_SAMPLE_INCLUDE_DIR}
-    ${QNN_SAMPLE_INCLUDE_DIR}/WrapperUtils
-)
+# Optional QNN SDK headers for qwen3_qnn_backend.cpp local development.
+if(DEFINED ENV{QNN_SDK_ROOT} AND EXISTS "$ENV{QNN_SDK_ROOT}/include/QNN")
+    set(QNN_SDK_DIR "$ENV{QNN_SDK_ROOT}")
+    set(QNN_INCLUDE_DIR "${QNN_SDK_DIR}/include/QNN")
+    set(QNN_SAMPLE_INCLUDE_DIR "${QNN_SDK_DIR}/examples/QNN/SampleApp/SampleApp/src")
+    target_include_directories(stt_native PRIVATE
+        ${QNN_INCLUDE_DIR}
+        ${QNN_SAMPLE_INCLUDE_DIR}
+        ${QNN_SAMPLE_INCLUDE_DIR}/WrapperUtils
+    )
+endif()
 
 target_link_libraries(stt_native
     sherpa-onnx-c-api

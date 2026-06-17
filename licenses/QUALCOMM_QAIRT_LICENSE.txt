@@ -1,0 +1,6 @@
+Copied from local QAIRT SDK:
+
+- G:\Program Files\qairt\2.45.0.260326\LICENSE.extracted.txt
+
+PocketVoice Android QNN builds rely on Qualcomm AI Runtime components.
+Keep the original Qualcomm license text in release artifacts when redistributing APKs that bundle QNN libraries.

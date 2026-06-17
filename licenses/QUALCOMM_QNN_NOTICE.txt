@@ -1,0 +1,7 @@
+Copied from local QAIRT SDK notice files:
+
+- G:\Program Files\qairt\2.45.0.260326\QNN_NOTICE.txt
+- G:\Program Files\qairt\2.45.0.260326\NOTICE.txt
+- G:\Program Files\qairt\2.45.0.260326\NOTICE_WINDOWS.txt
+
+Keep the original Qualcomm notice files in release artifacts when redistributing APKs that bundle QNN libraries.
