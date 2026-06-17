@@ -1,0 +1,8 @@
+ONNX Runtime is distributed under the MIT License.
+
+This repository currently ships ONNX Runtime binary files via third-party binary bundles.
+Before public release, keep the MIT license text with the binary package and preserve attribution.
+
+Upstream project:
+
+- https://github.com/microsoft/onnxruntime

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <vector>
 #include <mutex>
+#include <condition_variable>
 
 namespace stt {
 
@@ -38,6 +39,8 @@ private:
     void acceptThread();
     void clientThread(int clientSocket);
     void closeClientIfCurrent(int clientSocket);
+    void markPendingFinalSegment(uint32_t segmentId);
+    void notifySegmentSent(uint32_t segmentId);
     
     struct Impl;
     Impl* m_impl = nullptr;
@@ -52,6 +55,10 @@ private:
     
     int m_port = 18080;
     int m_clientSocket = -1;
+    std::mutex m_responseMutex;
+    std::condition_variable m_responseCv;
+    uint32_t m_pendingFinalSegmentId = 0;
+    bool m_waitingFinalResponse = false;
 };
 
 }

@@ -1,0 +1,9 @@
+SenseVoice model package in this repo points to upstream license information:
+
+- D:\Project\STT\models\sensevoice\sherpa-onnx-qnn-SM8550-binary-30-seconds-sense-voice-zh-en-ja-ko-yue-2024-07-17-int8\LICENSE
+
+That file references:
+
+- https://github.com/modelscope/FunASR?tab=readme-ov-file#license
+
+Review upstream model terms before commercial redistribution.

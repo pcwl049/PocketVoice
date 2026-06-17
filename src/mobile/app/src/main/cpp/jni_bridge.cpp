@@ -11,6 +11,7 @@
 #include "network.h"
 #include "runtime_state.h"
 #include "audio_job_queue.h"
+#include "text_postprocess.h"
 
 #define LOG_TAG "STT_Native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -31,7 +32,11 @@ static stt::RuntimeState g_runtimeState;
 static std::atomic<bool> g_recognitionCacheEnabled{false};
 
 static bool isCpuFallbackBackend(const std::string& backendName) {
-    return backendName == "zipformer_ctc" || backendName == "paraformer";
+    return backendName == "zipformer_ctc"
+        || backendName == "paraformer"
+        || backendName == "qwen3_asr_cpu"
+        || backendName == "paraformer_xnnpack"
+        || backendName == "paraformer_cpu";
 }
 
 static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server, const stt::AudioData& audio) {
@@ -61,6 +66,17 @@ static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server
     ).count();
 
     if (result.success) {
+        auto postprocessed = stt::postprocessRecognizedText(result.text);
+        if (postprocessed.text != result.text) {
+            std::ostringstream rules;
+            for (size_t i = 0; i < postprocessed.appliedRules.size(); ++i) {
+                if (i > 0) rules << ",";
+                rules << postprocessed.appliedRules[i];
+            }
+            LOGI("Postprocess: \"%s\" -> \"%s\" rules=%s", result.text.c_str(), postprocessed.text.c_str(), rules.str().c_str());
+            result.text = postprocessed.text;
+        }
+
         g_runtimeState.recordRecognition(
             audio.samples.data(),
             audio.samples.size(),

@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
@@ -26,6 +27,13 @@ public class SttForegroundService extends Service {
     private static final String EXTRA_RUNTIME_DIR = "runtimeDir";
     private static final String CHANNEL_ID = "stt_foreground";
     private static final int NOTIFICATION_ID = 27000;
+    private static final String PREFS_NAME = "pocketvoice_prefs";
+    private static final String PREF_BACKEND_POLICY = "backend_policy";
+    private static final String POLICY_AUTO = "auto";
+    private static final String POLICY_STANDARD = "standard";
+    private static final String POLICY_FAST = "fast";
+    private static final String POLICY_MIXED = "mixed";
+    private static final String POLICY_RESCUE = "rescue";
 
     private static volatile boolean running = false;
     private PowerManager.WakeLock wakeLock;
@@ -71,6 +79,11 @@ public class SttForegroundService extends Service {
         String runtimeDir = intent != null ? intent.getStringExtra(EXTRA_RUNTIME_DIR) : null;
         if (modelDir == null || modelDir.isEmpty()) {
             modelDir = resolveModelDir();
+            // When fallback resolve picks paraformer-qnn, .so files must be
+            // copied to internal storage (Android linker cannot dlopen from /sdcard)
+            if (modelDir.endsWith("paraformer-qnn")) {
+                modelDir = prepareParaformerQnnModelDir(modelDir);
+            }
         }
         if (runtimeDir == null || runtimeDir.isEmpty()) {
             runtimeDir = prepareQnnRuntimeDir();
@@ -167,22 +180,152 @@ public class SttForegroundService extends Service {
     private String resolveModelDir() {
         File root = new File(getApplicationContext().getExternalFilesDir(null), "models");
         File sensevoice = new File(root, "sensevoice");
+        File qwen3 = new File(root, "qwen3-asr-0.6b");
+        File qwen3Qnn = new File(root, "qwen3-asr-0.6b-qnn");
+        File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
         File zipformer = new File(root, "zipformer-ctc");
         File paraformer = new File(root, "paraformer");
-        if ((new File(sensevoice, "model.bin").exists()
+        File paraformerQnn = new File(root, "paraformer-qnn");
+        File paraformerOffline = new File(root, "paraformer-offline");
+        String policy = getBackendPolicy();
+
+        if (POLICY_STANDARD.equals(policy)
+                && (new File(sensevoice, "model.bin").exists()
+                || new File(sensevoice, "libmodel.so").exists())
+                && new File(sensevoice, "tokens.txt").exists()) {
+            Log.i(TAG, "Using standard backend policy -> sensevoice");
+            return sensevoice.getAbsolutePath();
+        }
+
+        if (POLICY_FAST.equals(policy)
+                && new File(paraformerQnn, "libencoder.so").exists()
+                && new File(paraformerQnn, "libpredictor.so").exists()
+                && new File(paraformerQnn, "libdecoder.so").exists()
+                && new File(paraformerQnn, "tokens.txt").exists()) {
+            Log.i(TAG, "Using fast backend policy -> paraformer-qnn");
+            return paraformerQnn.getAbsolutePath();
+        }
+
+        if (POLICY_MIXED.equals(policy)
+                && paraformerOffline.exists()
+                && new File(paraformerOffline, "tokens.txt").exists()
+                && (new File(paraformerOffline, "model.int8.onnx").exists()
+                    || new File(paraformerOffline, "model.onnx").exists())) {
+            Log.i(TAG, "Using mixed backend policy -> paraformer-offline");
+            return paraformerOffline.getAbsolutePath();
+        }
+
+        if (POLICY_RESCUE.equals(policy)
+                && new File(qwen3, "conv_frontend.onnx").exists()
+                && new File(qwen3, "encoder.int8.onnx").exists()
+                && new File(qwen3, "decoder.int8.onnx").exists()
+                && new File(qwen3, "tokenizer").exists()) {
+            Log.i(TAG, "Using rescue backend policy -> qwen3-asr-0.6b");
+            return qwen3.getAbsolutePath();
+        }
+
+        // SenseVoice QNN is the default production path
+        if (POLICY_AUTO.equals(policy)
+                && (new File(sensevoice, "model.bin").exists()
                 || new File(sensevoice, "libmodel.so").exists())
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();
         }
+
+        // Paraformer QNN is the fast alternative (73ms decode, HTP)
+        if (new File(paraformerQnn, "libencoder.so").exists()
+                && new File(paraformerQnn, "libpredictor.so").exists()
+                && new File(paraformerQnn, "libdecoder.so").exists()
+                && new File(paraformerQnn, "tokens.txt").exists()) {
+            Log.i(TAG, "Found Paraformer QNN model at: " + paraformerQnn.getAbsolutePath());
+            return paraformerQnn.getAbsolutePath();
+        }
+
+        // Paraformer XNNPACK offline (quality fallback for mixed-language)
+        if (paraformerOffline.exists() && new File(paraformerOffline, "tokens.txt").exists()
+                && (new File(paraformerOffline, "model.int8.onnx").exists()
+                    || new File(paraformerOffline, "model.onnx").exists())) {
+            Log.i(TAG, "Found Paraformer offline model at: " + paraformerOffline.getAbsolutePath());
+            return paraformerOffline.getAbsolutePath();
+        }
+
         if (new File(zipformer, "model.int8.onnx").exists()
                 && new File(zipformer, "bbpe.model").exists()
                 && new File(zipformer, "tokens.txt").exists()) {
             return zipformer.getAbsolutePath();
         }
+
+        // Qwen3 QNN is known broken (HTP KV cache override), kept as last resort
+        if (new File(qwen3Qnn, "decoder-w4/libmodel.so").exists()
+                && new File(qwen3Qnn, "conv_frontend/libmodel.so").exists()
+                && new File(qwen3Qnn, "encoder/libmodel.so").exists()
+                && new File(qwen3QnnTokenizer, "vocab.json").exists()
+                && new File(qwen3QnnTokenizer, "merges.txt").exists()
+                && new File(qwen3QnnTokenizer, "tokenizer_config.json").exists()) {
+            return qwen3Qnn.getAbsolutePath();
+        }
+
+        if (new File(qwen3, "conv_frontend.onnx").exists()
+                && new File(qwen3, "encoder.int8.onnx").exists()
+                && new File(qwen3, "decoder.int8.onnx").exists()
+                && new File(qwen3, "tokenizer").exists()) {
+            return qwen3.getAbsolutePath();
+        }
+
         return paraformer.getAbsolutePath();
     }
 
+    private SharedPreferences preferences() {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private String getBackendPolicy() {
+        String value = preferences().getString(PREF_BACKEND_POLICY, POLICY_AUTO);
+        if (POLICY_STANDARD.equals(value) || POLICY_FAST.equals(value)
+                || POLICY_MIXED.equals(value) || POLICY_RESCUE.equals(value)) {
+            return value;
+        }
+        return POLICY_AUTO;
+    }
+
+    private String prepareParaformerQnnModelDir(String modelDir) {
+        File internalDir = new File(getFilesDir(), "paraformer-qnn");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            Log.e(TAG, "Paraformer QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        File externalDir = new File(modelDir);
+        String[] modelFiles = new String[] {
+                "libencoder.so",
+                "libpredictor.so",
+                "libdecoder.so",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy Paraformer QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
+    }
+
     private String prepareQnnRuntimeDir() {
+        String currentModelDir = resolveModelDir();
+        if (currentModelDir.endsWith("qwen3-asr-0.6b-qnn")) {
+            String qwen3RuntimeDir = prepareQwen3QnnRuntimeDir(currentModelDir);
+            if (qwen3RuntimeDir != null && !qwen3RuntimeDir.isEmpty()) {
+                return qwen3RuntimeDir;
+            }
+        }
+
         File runtimeDir = new File(getFilesDir(), "qnn-runtime");
         if (!runtimeDir.exists() && !runtimeDir.mkdirs()) {
             return getApplicationInfo().nativeLibraryDir;
@@ -225,6 +368,51 @@ public class SttForegroundService extends Service {
             } catch (IOException e) {
                 Log.e(TAG, "Failed to copy QNN runtime lib " + lib, e);
             }
+        }
+        return runtimeDir.getAbsolutePath();
+    }
+
+    private String prepareQwen3QnnRuntimeDir(String modelDir) {
+        File runtimeDir = new File(getFilesDir(), "qnn-runtime-qwen3");
+        if (!runtimeDir.exists() && !runtimeDir.mkdirs()) {
+            return null;
+        }
+
+        File qnnModelDir = modelDir.endsWith("-qnn") ? new File(modelDir) : new File(modelDir + "-qnn");
+        // Prefer decoder-w128 if present, fallback to decoder-w4
+        File decoderSource = new File(qnnModelDir, "decoder-w128/libmodel.so");
+        if (!decoderSource.exists()) {
+            decoderSource = new File(qnnModelDir, "decoder-w4/libmodel.so");
+        }
+        if (!decoderSource.exists()) {
+            return null;
+        }
+        File decoderTarget = new File(runtimeDir, "libmodel.so");
+        try {
+            if (!decoderTarget.exists() || decoderTarget.length() != decoderSource.length()) {
+                copyFile(decoderSource, decoderTarget);
+            }
+
+            File nativeDir = new File(getApplicationInfo().nativeLibraryDir);
+            String[] qnnLibs = new String[] {
+                    "libQnnHtp.so",
+                    "libQnnHtpPrepare.so",
+                    "libQnnHtpNetRunExtensions.so",
+                    "libQnnHtpV73Stub.so",
+                    "libQnnHtpV73CalculatorStub.so",
+                    "libQnnHtpV73Skel.so",
+                    "libQnnSystem.so"
+            };
+            for (String lib : qnnLibs) {
+                File source = new File(nativeDir, lib);
+                File target = new File(runtimeDir, lib);
+                if (!source.exists()) continue;
+                if (target.exists() && target.length() == source.length()) continue;
+                copyFile(source, target);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to prepare Qwen3 QNN runtime", e);
+            return null;
         }
         return runtimeDir.getAbsolutePath();
     }
