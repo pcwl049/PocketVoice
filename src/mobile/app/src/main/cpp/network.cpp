@@ -154,7 +154,22 @@ void NetworkServer::clientThread(int clientSocket) {
     while (m_running && clientSocket >= 0) {
         int received = recv(clientSocket, (char*)headerBuf, 8, MSG_WAITALL);
         if (received <= 0) {
-            LOGI("Client disconnected");
+            bool shouldWaitForResponse = false;
+            uint32_t pendingSegmentId = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_responseMutex);
+                shouldWaitForResponse = m_waitingFinalResponse;
+                pendingSegmentId = m_pendingFinalSegmentId;
+            }
+            if (shouldWaitForResponse) {
+                LOGI("Client write side closed; waiting for final response, segment=%u", pendingSegmentId);
+                std::unique_lock<std::mutex> waitLock(m_responseMutex);
+                m_responseCv.wait_for(waitLock, std::chrono::seconds(15), [&]() {
+                    return !m_waitingFinalResponse || !m_running;
+                });
+            } else {
+                LOGI("Client disconnected");
+            }
             break;
         }
         
@@ -202,6 +217,9 @@ void NetworkServer::clientThread(int clientSocket) {
                 memcpy(audio.samples.data(), payload.data() + offset, numSamples * sizeof(float));
                 
                 audio.is_final = header.flags & FLAG_FINAL;
+                if (audio.is_final) {
+                    markPendingFinalSegment(audio.segment_id);
+                }
                 
                 if (m_audioCallback) {
                     m_audioCallback(audio);
@@ -270,6 +288,9 @@ bool NetworkServer::sendText(const std::string& text, const std::string& emotion
     packet.insert(packet.end(), buffer.begin(), buffer.end());
     
     int sent = send(m_clientSocket, (const char*)packet.data(), packet.size(), 0);
+    if (sent == (int)packet.size()) {
+        notifySegmentSent(segmentId);
+    }
     return sent == (int)packet.size();
 }
 
@@ -281,6 +302,21 @@ void NetworkServer::closeClientIfCurrent(int clientSocket) {
         shutdown(m_clientSocket, SHUT_RDWR);
         close(m_clientSocket);
         m_clientSocket = -1;
+    }
+}
+
+void NetworkServer::markPendingFinalSegment(uint32_t segmentId) {
+    std::lock_guard<std::mutex> lock(m_responseMutex);
+    m_pendingFinalSegmentId = segmentId;
+    m_waitingFinalResponse = true;
+}
+
+void NetworkServer::notifySegmentSent(uint32_t segmentId) {
+    std::lock_guard<std::mutex> lock(m_responseMutex);
+    if (m_waitingFinalResponse && segmentId == m_pendingFinalSegmentId) {
+        m_waitingFinalResponse = false;
+        m_pendingFinalSegmentId = 0;
+        m_responseCv.notify_all();
     }
 }
 

@@ -1,0 +1,5 @@
+See upstream license text from:
+
+- D:\Project\STT\third_party\FireRedASR2S\LICENSE
+
+PocketVoice references FireRedASR2S materials under Apache License 2.0.

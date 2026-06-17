@@ -26,7 +26,7 @@
       <div class="listen-row">
         <div>
           <p class="listen-state" data-service-title>准备好了</p>
-          <p class="listen-note">语音会转成 ChatBox 文本。</p>
+          <p class="listen-note">语音会转换成 ChatBox 文本。</p>
         </div>
         <span class="pill mono" data-port>tcp:27000</span>
       </div>
@@ -58,14 +58,15 @@
     <section class="panel path-panel">
       <div class="section-head">
         <p class="section-title">模型</p>
-        <span class="pill mono" data-backend>unknown</span>
+        <div class="path-actions">
+          <span class="pill mono" data-backend>unknown</span>
+          <button class="quiet-chip" data-open-settings>高级</button>
+        </div>
       </div>
       <p class="path-line mono" data-model-dir>正在读取模型路径。</p>
       <p class="cache-line" data-cache-stats>缓存 0 / 0</p>
-      <label class="toggle-row">
-        <span>识别缓存</span>
-        <input type="checkbox" data-cache-toggle>
-      </label>
+      <p class="policy-line" data-policy-summary>策略：自动</p>
+      <p class="import-line" data-import-status>模型包：未导入</p>
     </section>
 
     <section class="panel log-panel">
@@ -76,6 +77,66 @@
       <div class="log" data-log></div>
     </section>
   </main>
+
+  <div class="sheet-shell" data-sheet-shell hidden>
+    <button class="sheet-backdrop" data-close-settings aria-label="关闭高级设置"></button>
+    <section class="sheet" data-sheet>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <p class="sheet-eyebrow">设置</p>
+          <h2>后端策略</h2>
+        </div>
+        <button class="quiet-button" data-close-settings>关闭</button>
+      </div>
+
+      <section class="sheet-block">
+        <p class="sheet-title">当前实际使用</p>
+        <p class="sheet-current mono" data-sheet-backend>unknown</p>
+        <p class="sheet-note" data-sheet-note>系统会按当前策略选择实际后端。</p>
+      </section>
+
+      <section class="sheet-block">
+        <p class="sheet-title">策略</p>
+        <div class="policy-list">
+          <button class="policy-option" data-policy-option data-policy="auto">
+            <span class="policy-main">自动</span>
+            <span class="policy-sub">按当前场景选择实际后端</span>
+          </button>
+          <button class="policy-option" data-policy-option data-policy="standard">
+            <span class="policy-main">标准中文</span>
+            <span class="policy-sub mono">SenseVoiceQnn</span>
+          </button>
+          <button class="policy-option" data-policy-option data-policy="fast">
+            <span class="policy-main">极速</span>
+            <span class="policy-sub mono">ParaformerQnn</span>
+          </button>
+          <button class="policy-option" data-policy-option data-policy="mixed">
+            <span class="policy-main">兼顾中英</span>
+            <span class="policy-sub mono">ParaformerXnnpack</span>
+          </button>
+          <button class="policy-option" data-policy-option data-policy="rescue">
+            <span class="policy-main">兼容兜底</span>
+            <span class="policy-sub mono">Qwen3AsrCpu</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="sheet-block">
+        <p class="sheet-title">模型包</p>
+        <button class="sheet-action" data-import-model-pack>导入模型包</button>
+        <p class="sheet-note" data-import-note>支持 zip 文件，导入后自动放入 models 目录。</p>
+      </section>
+
+      <section class="sheet-block">
+        <label class="toggle-row sheet-toggle">
+          <span>识别缓存</span>
+          <input type="checkbox" data-cache-toggle>
+        </label>
+      </section>
+    </section>
+  </div>
+
   <script src="./app.js"></script>
 </body>
 </html>

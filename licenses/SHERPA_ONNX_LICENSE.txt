@@ -1,0 +1,5 @@
+See upstream license text from:
+
+- D:\Project\STT\third_party\sherpa-onnx-src\LICENSE
+
+PocketVoice distributes sherpa-onnx components under Apache License 2.0.
