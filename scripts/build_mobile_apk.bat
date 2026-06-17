@@ -37,6 +37,9 @@ if "%USE_QNN%"=="1" (
     echo QNN build: ON
 )
 
+mkdir "%PROJECT_DIR%\src\main\jniLibs" 2>nul
+mkdir "%PROJECT_DIR%\src\main\jniLibs\arm64-v8a" 2>nul
+
 echo.
 echo === [1/2] Build Native Library ===
 cmake -S "%PROJECT_DIR%\src\main\cpp" -B "%NATIVE_BUILD_DIR%" -G "Unix Makefiles" ^
