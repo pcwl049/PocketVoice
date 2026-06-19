@@ -147,16 +147,26 @@ if errorlevel 1 goto :error
 
 echo.
 echo [2/5] Linking...
-"%LINK_PATH%" "%BUILD_DIR%\obj\*.obj" "%BUILD_DIR%\obj\pc_resources.res" /LIBPATH:"%SHERPA_DIR%\lib" /LIBPATH:"%WEBVIEW2_DIR%\build\native\x64" sherpa-onnx-c-api.lib onnxruntime.lib WebView2LoaderStatic.lib version.lib advapi32.lib ws2_32.lib user32.lib ole32.lib avrt.lib mmdevapi.lib propsys.lib /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /OUT:"%BUILD_DIR%\stt_pc.exe"
+"%LINK_PATH%" "%BUILD_DIR%\obj\*.obj" "%BUILD_DIR%\obj\pc_resources.res" /LIBPATH:"%SHERPA_DIR%\lib" /LIBPATH:"%WEBVIEW2_DIR%\build\native\x64" sherpa-onnx-c-api.lib onnxruntime.lib WebView2LoaderStatic.lib version.lib advapi32.lib ws2_32.lib user32.lib gdi32.lib ole32.lib avrt.lib mmdevapi.lib propsys.lib dwmapi.lib /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /OUT:"%BUILD_DIR%\stt_pc.exe"
 if errorlevel 1 goto :error
 
 echo.
 echo [3/5] Copying DLLs...
 copy /Y "%SHERPA_DIR%\bin\*.dll" "%BUILD_DIR%\" >nul
+copy /Y "%SHERPA_DIR%\lib\*.dll" "%BUILD_DIR%\" >nul
+if not exist "%BUILD_DIR%\sherpa-onnx-c-api.dll" (
+  echo ERROR: Missing runtime DLL: sherpa-onnx-c-api.dll
+  echo Expected source: %SHERPA_DIR%\lib\sherpa-onnx-c-api.dll
+  goto :error
+)
 
 echo.
 echo [4/5] Copying config...
-copy /Y "%ROOT_DIR%\config.json" "%BUILD_DIR%\" >nul
+if exist "%ROOT_DIR%\config.json" (
+  copy /Y "%ROOT_DIR%\config.json" "%BUILD_DIR%\" >nul
+)
+if not exist "%BUILD_DIR%\models" mkdir "%BUILD_DIR%\models"
+copy /Y "%ROOT_DIR%\models\chat_filter_words.txt" "%BUILD_DIR%\models\" >nul
 if not exist "%BUILD_DIR%\models\fireredvad" mkdir "%BUILD_DIR%\models\fireredvad"
 copy /Y "%ROOT_DIR%\models\fireredvad\fireredvad_stream_vad_with_cache.onnx" "%BUILD_DIR%\models\fireredvad\" >nul
 copy /Y "%ROOT_DIR%\models\fireredvad\cmvn.ark" "%BUILD_DIR%\models\fireredvad\" >nul

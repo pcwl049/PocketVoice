@@ -73,6 +73,7 @@ struct DisplayConfig {
         {"UNKNOWN", ""}
     };
     int max_text_length = 144;
+    int chatbox_clear_delay_ms = 6000;
 };
 
 struct LogConfig {
@@ -179,6 +180,7 @@ inline Config loadConfig(const std::string& path) {
     
     cfg.display.max_text_length = parseInSectionInt("display", "max_text_length", cfg.display.max_text_length);
     cfg.display.show_emotion_icon = parseInSectionBool("display", "show_emotion_icon", cfg.display.show_emotion_icon);
+    cfg.display.chatbox_clear_delay_ms = parseInSectionInt("display", "chatbox_clear_delay_ms", cfg.display.chatbox_clear_delay_ms);
     
     return cfg;
 }

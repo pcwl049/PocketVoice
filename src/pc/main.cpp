@@ -135,6 +135,7 @@ static int64_t nowMillis() {
 
 static void startChatBoxQueue() {
     if (g_chatboxQueue) return;
+    g_chatboxFormatter.loadWordList("models/chat_filter_words.txt");
     g_chatboxQueue = new stt::ChatBoxQueue(
         [](const std::string& text) {
             if (!g_oscReady) return false;
@@ -149,6 +150,7 @@ static void startChatBoxQueue() {
         nowMillis
     );
     g_chatboxQueue->setIntervalMs(1500);
+    g_chatboxQueue->setAutoClearDelayMs(g_config.display.chatbox_clear_delay_ms);
     g_runtime.setChatBoxSnapshot(g_chatboxQueue->snapshot());
     g_chatboxThreadRunning = true;
     g_chatboxThread = std::thread(chatBoxQueueLoop);
@@ -569,15 +571,16 @@ BOOL WINAPI consoleHandler(DWORD fdwCtrlType) {
 void onTextReceived(const stt::TextResult& result) {
     if (!result.success || result.text.empty()) return;
     setTyping(false);
+    const std::string sanitizedText = g_chatboxFormatter.sanitizeText(result.text);
     if (result.segment_id != 0) {
         printf("[Network] Text segment id: %u\n", result.segment_id);
     }
     {
         std::lock_guard<std::mutex> lock(g_mutex);
-        g_lastText = result.text;
+        g_lastText = sanitizedText;
         g_receivedText = true;
     }
-    g_runtime.setLastText(result.text, result.emotion);
+    g_runtime.setLastText(sanitizedText, result.emotion);
     g_textCv.notify_all();
     
     {
@@ -586,7 +589,7 @@ void onTextReceived(const stt::TextResult& result) {
         g_currentEmotion = result.emotion;
     }
 
-    sendChatBoxText(result.text, result.emotion);
+    sendChatBoxText(sanitizedText, result.emotion);
 }
 
 static void setTyping(bool typing) {

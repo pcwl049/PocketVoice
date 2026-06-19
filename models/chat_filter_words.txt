@@ -1,0 +1,16 @@
+# UTF-8 words, one per line.
+# Lines starting with # are ignored.
+# ASCII words are matched case-insensitively.
+
+操你妈
+草你妈
+傻逼
+煞笔
+沙比
+贱人
+fuck
+fucking
+motherfucker
+bitch
+asshole
+cunt

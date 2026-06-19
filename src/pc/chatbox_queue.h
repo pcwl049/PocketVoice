@@ -27,6 +27,7 @@ public:
     ChatBoxQueue(SendFn sendFn, ClockFn clockFn);
 
     void setIntervalMs(int64_t intervalMs);
+    void setAutoClearDelayMs(int64_t delayMs);
     void setPaused(bool paused);
     void enqueue(const std::vector<std::string>& texts);
     bool tick();
@@ -40,7 +41,9 @@ private:
     SendFn m_sendFn;
     ClockFn m_clockFn;
     int64_t m_intervalMs = 1500;
+    int64_t m_autoClearDelayMs = 0;
     int64_t m_lastSendMs = -1500;
+    int64_t m_clearDueMs = -1;
     std::deque<std::string> m_pending;
     std::deque<std::string> m_recent;
     ChatBoxQueueSnapshot m_snapshot;
