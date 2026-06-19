@@ -2,25 +2,51 @@
 
 #include <cassert>
 #include <cstdio>
+#include <fstream>
 
 int main() {
     stt::ChatBoxFormatter formatter;
     formatter.setMaxChars(18);
 
-    auto parts = formatter.splitText("第一句。第二句很长很长很长，需要切开！第三句");
+    auto parts = formatter.splitText(
+        "\xe7\xac\xac\xe4\xb8\x80\xe5\x8f\xa5\xe3\x80\x82"
+        "\xe7\xac\xac\xe4\xba\x8c\xe5\x8f\xa5\xe5\xbe\x88\xe9\x95\xbf\xe5\xbe\x88\xe9\x95\xbf\xe5\xbe\x88\xe9\x95\xbf\xef\xbc\x8c"
+        "\xe9\x9c\x80\xe8\xa6\x81\xe5\x88\x87\xe5\xbc\x80\xef\xbc\x81"
+        "\xe7\xac\xac\xe4\xb8\x89\xe5\x8f\xa5");
     assert(parts.size() >= 3);
-    assert(parts[0] == "第一句。");
+    assert(parts[0] == "\xe7\xac\xac\xe4\xb8\x80\xe5\x8f\xa5\xe3\x80\x82");
     for (const auto& part : parts) {
         assert(part.find("\xef\xbf\xbd") == std::string::npos);
     }
 
-    assert(formatter.shouldSend("第一句。"));
-    assert(!formatter.shouldSend("第一句。"));
-    assert(formatter.shouldSend("第二句。"));
+    assert(formatter.shouldSend("\xe7\xac\xac\xe4\xb8\x80\xe5\x8f\xa5\xe3\x80\x82"));
+    assert(!formatter.shouldSend("\xe7\xac\xac\xe4\xb8\x80\xe5\x8f\xa5\xe3\x80\x82"));
+    assert(formatter.shouldSend("\xe7\xac\xac\xe4\xba\x8c\xe5\x8f\xa5\xe3\x80\x82"));
 
-    assert(formatter.formatMessage("这是第一种。") == "\xe2\x8c\x81 这是第一种。");
-    assert(formatter.formatMessage("⌁ 这是第一种。") == "⌁ 这是第一种。");
-    assert(formatter.formatMessage("⌁ 声音转写：这是第一种。") == "⌁ 这是第一种。");
+    assert(formatter.formatMessage("\xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82") ==
+           "\xe2\x8c\x81 \xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82");
+    assert(formatter.formatMessage("\xe2\x8c\x81 \xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82") ==
+           "\xe2\x8c\x81 \xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82");
+    assert(formatter.formatMessage(
+               "\xe2\x8c\x81 \xe5\xa3\xb0\xe9\x9f\xb3\xe8\xbd\xac\xe5\x86\x99\xef\xbc\x9a"
+               "\xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82") ==
+           "\xe2\x8c\x81 \xe8\xbf\x99\xe6\x98\xaf\xe7\xac\xac\xe4\xb8\x80\xe7\xa7\x8d\xe3\x80\x82");
+
+    formatter.loadWordList("__chat_filter_missing.txt");
+    assert(formatter.sanitizeText("\xe4\xbd\xa0\xe5\xa6\x88 hello") == "\xe4\xbd\xa0\xe5\xa6\x88 hello");
+    assert(formatter.sanitizeText("This is FUCK bad") == "This is f*** bad");
+    assert(formatter.sanitizeText("\xe5\x82\xbb\xe9\x80\xbc and shit") == "\xe5\x82\xbb* and shit");
+
+    {
+        std::ofstream out("__chat_filter_test.txt", std::ios::trunc);
+        out << "# test\n";
+        out << "hello\n";
+        out << "\xe4\xbd\xa0\xe5\xa5\xbd\n";
+    }
+    formatter.loadWordList("__chat_filter_test.txt");
+    assert(formatter.sanitizeText("hello there") == "h**** there");
+    assert(formatter.sanitizeText("\xe4\xbd\xa0\xe5\xa5\xbd world") == "\xe4\xbd\xa0* world");
+    std::remove("__chat_filter_test.txt");
 
     puts("chatbox_formatter tests passed");
     return 0;

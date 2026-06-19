@@ -18,7 +18,8 @@ int main() {
     assert(html.find("/control/listen/stop") != std::string::npos);
     assert(html.find("/control/listen/start") != std::string::npos);
     assert(html.find("/control/phone/reconnect") != std::string::npos);
-    assert(html.find("audio-device-select") != std::string::npos);
+    assert(html.find("audio-device-button") != std::string::npos);
+    assert(html.find("audio-device-menu") != std::string::npos);
     assert(html.find("/control/audio/input-device") != std::string::npos);
     assert(html.find("data.audio_input") != std::string::npos);
     assert(html.find("renderAudioDevices") != std::string::npos);

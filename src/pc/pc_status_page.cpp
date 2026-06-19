@@ -30,20 +30,40 @@ std::string pcStatusPageHtml() {
 
     * { box-sizing: border-box; }
 
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(236, 232, 220, 0.22) transparent;
+    }
+
+    *::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: rgba(236, 232, 220, 0.18);
+      border-radius: 999px;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       margin: 0;
-      min-height: 100vh;
       font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
       color: var(--text);
       background:
         radial-gradient(circle at 15% 12%, rgba(142, 191, 123, 0.10), transparent 30%),
         radial-gradient(circle at 85% 18%, rgba(216, 173, 111, 0.08), transparent 26%),
         linear-gradient(145deg, #101210 0%, #171a17 52%, #101211 100%);
-      overflow-x: hidden;
-    }
-
-    body.dragging {
-      cursor: move;
     }
 
     body::before {
@@ -60,7 +80,10 @@ std::string pcStatusPageHtml() {
     }
 
     .shell {
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
     .topbar {
@@ -69,18 +92,22 @@ std::string pcStatusPageHtml() {
       justify-content: space-between;
       gap: 18px;
       width: 100%;
-      min-height: 86px;
-      padding: 14px 20px 12px;
+      min-height: 76px;
+      padding: 12px 20px 10px;
       user-select: none;
       border-bottom: 1px solid rgba(229, 224, 211, 0.08);
       background: rgba(17, 19, 18, 0.36);
       backdrop-filter: blur(14px);
+      flex: 0 0 auto;
     }
 
     .content {
       width: min(1180px, calc(100% - 40px));
       margin: 0 auto;
-      padding: 22px 0 42px;
+      padding: 14px 0 14px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .brand h1 {
@@ -110,7 +137,7 @@ std::string pcStatusPageHtml() {
       align-items: center;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 10px;
+      margin-top: 8px;
     }
 
     .window-actions {
@@ -118,7 +145,14 @@ std::string pcStatusPageHtml() {
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+    }
+
+    .titlebar-side {
+      flex: 0 0 auto;
+      display: grid;
+      justify-items: end;
+      align-content: start;
     }
 
     .window-btn {
@@ -144,6 +178,14 @@ std::string pcStatusPageHtml() {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
       gap: 18px;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .main-column {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .panel {
@@ -155,7 +197,7 @@ std::string pcStatusPageHtml() {
       backdrop-filter: blur(16px);
     }
 
-    .panel.pad { padding: 18px; }
+    .panel.pad { padding: 14px; }
 
     .panel.device-open {
       z-index: 50;
@@ -165,12 +207,12 @@ std::string pcStatusPageHtml() {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
-      margin-bottom: 18px;
+      margin-bottom: 12px;
     }
 
     .status {
-      min-height: 76px;
-      padding: 14px;
+      min-height: 68px;
+      padding: 12px;
       background: rgba(255,255,255,0.035);
       border: 1px solid rgba(255,255,255,0.07);
       border-radius: 8px;
@@ -187,12 +229,12 @@ std::string pcStatusPageHtml() {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 620;
     }
 
     .text-card {
-      min-height: 260px;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       background: var(--panel-strong);
@@ -202,20 +244,63 @@ std::string pcStatusPageHtml() {
     }
 
     .section-title {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
-      padding: 14px 16px;
+      gap: 12px;
+      min-height: 46px;
+      padding: 10px 18px 8px 16px;
       border-bottom: 1px solid var(--line);
       color: var(--muted);
       font-size: 13px;
+      line-height: 1;
+      overflow: hidden;
+    }
+
+    .section-title > span,
+    .section-title > button {
+      min-width: 0;
+      align-self: center;
+      line-height: 1;
+    }
+
+    .section-title > span:last-child {
+      justify-self: end;
+      padding-right: 2px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .side-section-title {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 30px;
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .side-section-title > span,
+    .side-section-title > button {
+      min-width: 0;
+      align-self: center;
+      line-height: 1;
+    }
+
+    .side-section-title > span:last-child {
+      justify-self: end;
+      text-align: right;
+      white-space: nowrap;
     }
 
     .actions {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin: 0 0 14px;
+      margin: 0 0 10px;
     }
 
     button {
@@ -343,15 +428,16 @@ std::string pcStatusPageHtml() {
     }
 
     .feedback {
-      min-height: 22px;
-      margin-bottom: 10px;
+      min-height: 20px;
+      margin-bottom: 8px;
       color: var(--muted);
       font-size: 13px;
     }
 
     .latest-text {
       flex: 1;
-      padding: 22px;
+      min-height: 0;
+      padding: 18px 22px;
       font-size: 24px;
       line-height: 1.55;
       word-break: break-word;
@@ -364,8 +450,13 @@ std::string pcStatusPageHtml() {
 
     .side {
       display: grid;
-      gap: 18px;
+      grid-template-rows: auto auto auto minmax(148px, 1fr);
+      gap: 10px;
       position: relative;
+      min-height: 120px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 2px;
     }
 
     .side.device-open {
@@ -379,7 +470,7 @@ std::string pcStatusPageHtml() {
     }
 
     .metric {
-      padding: 14px;
+      padding: 12px;
       border-radius: 8px;
       background: rgba(255,255,255,0.035);
       border: 1px solid rgba(255,255,255,0.07);
@@ -393,12 +484,12 @@ std::string pcStatusPageHtml() {
     }
 
     .metric strong {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 650;
     }
 
     .queue-text {
-      margin-top: 12px;
+      margin-top: 10px;
       color: var(--muted);
       font-size: 13px;
       line-height: 1.45;
@@ -406,8 +497,8 @@ std::string pcStatusPageHtml() {
     }
 
     .error {
-      min-height: 70px;
-      padding: 14px;
+      min-height: 46px;
+      padding: 12px;
       color: #e8d3c8;
       background: rgba(215, 117, 104, 0.08);
       border: 1px solid rgba(215, 117, 104, 0.18);
@@ -419,7 +510,8 @@ std::string pcStatusPageHtml() {
     .event-log {
       display: grid;
       gap: 7px;
-      max-height: 220px;
+      min-height: 148px;
+      max-height: none;
       overflow-y: auto;
       padding-right: 2px;
     }
@@ -428,7 +520,7 @@ std::string pcStatusPageHtml() {
       display: grid;
       grid-template-columns: auto 1fr;
       gap: 4px 8px;
-      padding: 9px 10px;
+      padding: 8px 10px;
       border-radius: 7px;
       background: rgba(255,255,255,0.035);
       border: 1px solid rgba(255,255,255,0.06);
@@ -454,7 +546,21 @@ std::string pcStatusPageHtml() {
 
     .event-row span {
       color: var(--muted);
+      display: block;
       word-break: break-word;
+    }
+
+    .error-panel {
+      display: grid;
+      grid-template-rows: auto minmax(46px, auto);
+      align-content: start;
+    }
+
+    .log-panel {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
     }
 
     .muted { color: var(--muted); }
@@ -465,7 +571,11 @@ std::string pcStatusPageHtml() {
     @media (max-width: 860px) {
       .topbar { padding-inline: 12px; }
       .content { width: min(100% - 24px, 1180px); padding-top: 18px; }
-      .topbar { align-items: flex-start; flex-direction: column; }
+      html, body { overflow: auto; }
+      .shell { min-height: 100vh; height: auto; overflow: visible; }
+      .content { overflow: visible; }
+      .grid { height: auto; }
+      .side { overflow: visible; }
       .grid { grid-template-columns: 1fr; }
       .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .latest-text { font-size: 20px; }
@@ -487,7 +597,7 @@ std::string pcStatusPageHtml() {
           <button id="listen-btn" type="button">停止监听</button>
         </div>
       </div>
-      <div>
+      <div class="titlebar-side">
         <div class="window-actions">
           <button id="minimize-window-btn" class="window-btn" type="button" title="最小化">−</button>
           <button id="close-window-btn" class="window-btn warn" type="button" title="关闭">×</button>
@@ -498,7 +608,7 @@ std::string pcStatusPageHtml() {
 
     <section class="content">
     <div class="grid">
-      <div>
+      <div class="main-column">
         <div class="status-grid">
           <div class="status"><span>手机连接</span><strong><i id="phone-dot" class="dot"></i><b id="phone">--</b></strong></div>
           <div class="status"><span>OSC</span><strong><i id="osc-dot" class="dot"></i><b id="osc">--</b></strong></div>
@@ -517,7 +627,7 @@ std::string pcStatusPageHtml() {
 
       <aside id="side-panel" class="side">
         <section id="runtime-panel" class="panel pad">
-          <div class="section-title" style="padding:0 0 12px;border-bottom:0">
+          <div class="side-section-title">
             <span>ChatBox 队列</span>
             <span id="dry-run" class="muted">dry-run: --</span>
           </div>
@@ -537,7 +647,7 @@ std::string pcStatusPageHtml() {
         </section>
 
         <section class="panel pad">
-          <div class="section-title" style="padding:0 0 12px;border-bottom:0">
+          <div class="side-section-title">
             <span>运行信息</span>
             <span id="running" class="muted">--</span>
           </div>
@@ -555,16 +665,16 @@ std::string pcStatusPageHtml() {
           </div>
         </section>
 
-        <section class="panel pad">
-          <div class="section-title" style="padding:0 0 12px;border-bottom:0">
+        <section class="panel pad error-panel">
+          <div class="side-section-title">
             <span>最近错误</span>
             <button id="clear-error-btn" type="button">清空错误</button>
           </div>
           <div id="error" class="error muted">无</div>
         </section>
 
-        <section class="panel pad">
-          <div class="section-title" style="padding:0 0 12px;border-bottom:0">
+        <section class="panel pad log-panel">
+          <div class="side-section-title">
             <span>事件</span>
             <span class="muted">最近</span>
           </div>
@@ -677,6 +787,14 @@ std::string pcStatusPageHtml() {
       }).join("");
     }
 
+    function resetSideScrollIfNeeded() {
+      const side = $("side-panel");
+      if (!side) return;
+      if (side.scrollTop > 0 && refreshCount <= 1) {
+        side.scrollTop = 0;
+      }
+    }
+
     async function refresh() {
       try {
         const response = await fetch("/status", { cache: "no-store" });
@@ -721,6 +839,7 @@ std::string pcStatusPageHtml() {
         $("error").textContent = text(err);
         $("error").classList.toggle("muted", !err);
         renderEventLog(data.recent_logs);
+        resetSideScrollIfNeeded();
       } catch (err) {
         $("poll-dot").className = "dot bad";
         $("poll-text").textContent = "状态读取失败";
@@ -773,11 +892,9 @@ std::string pcStatusPageHtml() {
     $("close-window-btn").addEventListener("click", () => postHostMessage("window.close"));
     document.querySelector(".topbar").addEventListener("mousedown", (event) => {
       if (event.button === 0 && !event.target.closest("button, .poll")) {
-        document.body.classList.add("dragging");
         postHostMessage("window.drag");
       }
     });
-    document.addEventListener("mouseup", () => document.body.classList.remove("dragging"));
     window.addEventListener("resize", () => { if (deviceMenuOpen) positionDeviceMenu(); });
     $("clear-queue-btn").addEventListener("click", () => postControl("/control/queue/clear", "清空队列"));
     $("clear-chatbox-btn").addEventListener("click", () => postControl("/control/chatbox/clear", "清空 ChatBox"));

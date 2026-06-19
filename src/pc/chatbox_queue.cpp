@@ -16,6 +16,13 @@ void ChatBoxQueue::setIntervalMs(int64_t intervalMs) {
     }
 }
 
+void ChatBoxQueue::setAutoClearDelayMs(int64_t delayMs) {
+    m_autoClearDelayMs = delayMs > 0 ? delayMs : 0;
+    if (m_autoClearDelayMs == 0) {
+        m_clearDueMs = -1;
+    }
+}
+
 void ChatBoxQueue::setPaused(bool paused) {
     m_snapshot.paused = paused;
     m_snapshot.sending = !paused && !m_pending.empty();
@@ -41,13 +48,37 @@ bool ChatBoxQueue::tick() {
         return false;
     }
 
-    if (m_pending.empty() || !m_sendFn || !m_clockFn) {
+    if (!m_sendFn || !m_clockFn) {
         m_snapshot.pending_count = m_pending.size();
         m_snapshot.sending = false;
         return false;
     }
 
     int64_t nowMs = m_clockFn();
+
+    if (m_pending.empty()) {
+        if (m_clearDueMs >= 0 && nowMs >= m_clearDueMs) {
+            if (!m_sendFn("")) {
+                m_snapshot.failed_count++;
+                m_snapshot.last_error = "send failed";
+                m_snapshot.pending_count = 0;
+                m_snapshot.sending = false;
+                return false;
+            }
+            m_lastSendMs = nowMs;
+            m_clearDueMs = -1;
+            m_snapshot.sent_count++;
+            m_snapshot.last_sent_text.clear();
+            m_snapshot.last_error.clear();
+            m_snapshot.pending_count = 0;
+            m_snapshot.sending = false;
+            return true;
+        }
+        m_snapshot.pending_count = 0;
+        m_snapshot.sending = false;
+        return false;
+    }
+
     if (nowMs - m_lastSendMs < m_intervalMs) {
         m_snapshot.pending_count = m_pending.size();
         m_snapshot.sending = !m_snapshot.paused && !m_pending.empty();
@@ -66,6 +97,7 @@ bool ChatBoxQueue::tick() {
     m_pending.pop_front();
     remember(text);
     m_lastSendMs = nowMs;
+    m_clearDueMs = m_autoClearDelayMs > 0 ? nowMs + m_autoClearDelayMs : -1;
     m_snapshot.sent_count++;
     m_snapshot.last_sent_text = text;
     m_snapshot.last_error.clear();
@@ -76,6 +108,7 @@ bool ChatBoxQueue::tick() {
 
 void ChatBoxQueue::clear() {
     m_pending.clear();
+    m_clearDueMs = -1;
     m_snapshot.pending_count = 0;
     m_snapshot.sending = false;
     m_snapshot.last_error.clear();
