@@ -18,7 +18,17 @@ PocketVoice 是给 VRChat ChatBox 使用的本地离线语音转文字工具。
 - Windows 端可选择录音设备。
 - PC 端负责收音、语音活动检测、音频分段、USB 转发和 ChatBox 输出。
 - Android 端负责接收语音片段，并在本机完成语音识别。
-- 当前预览版支持 SenseVoice QNN 后端。
+
+## 识别后端（手机端）
+
+| 后端 | 说明 |
+|---|---|
+| FireRed QNN（ORT QNN EP） | FireRedASR2-CTC 静态 QDQ uint8 模型，HTP 加速，普通话 CER ~3% |
+| FireRed CPU | sherpa-onnx int8 动态量化路径 |
+| SenseVoice CPU / QNN | 自带标点/ITN/情感事件，~4.4% CER，速度快 |
+| Paraformer（XNNPACK / QNN） | 普通话 CER ~2%，速度最快（~200ms/5s 音频） |
+
+策略选择见 App 内「后端策略」；QNN 后端需要骁龙 8 Gen 1+（HTP）。
 
 ## 使用前需要
 
