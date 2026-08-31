@@ -73,3 +73,33 @@ Microsoft Visual C++ runtime
 PocketVoice PC binaries may include Microsoft Visual C++ runtime DLLs required
 to run the application on Windows. Those files remain subject to Microsoft
 redistribution terms.
+
+Paraformer (FunASR / Alibaba)
+
+PocketVoice may include Paraformer model files (ONNX and QNN variants, both
+zh and bilingual zh-en). Paraformer is released by Alibaba DAMO Academy under
+the MIT License. The sherpa-onnx QNN conversion is from k2-fsa. Full license:
+
+- licenses/PARAFORMER_LICENSE.txt
+
+QNN (Qualcomm AI Runtime) model variants
+
+QNN-enabled builds (provider = "qnn") load Qualcomm AI Runtime shared
+libraries (libQnnHtp.so, libQnnHtpV*Stub.so, libQnnSystem.so and related HTP
+support libraries) from the bundled qnn-runtime directory. These files are
+Qualcomm Technologies, Inc. software and remain subject to the Qualcomm
+license accepted for the Qualcomm AI Runtime SDK. See:
+
+- licenses/QUALCOMM_QAIRT_LICENSE.txt
+- licenses/QUALCOMM_QNN_NOTICE.txt
+
+Do not extract and redistribute the Qualcomm runtime libraries separately
+from the PocketVoice Android application.
+
+FireRedASR2-CTC (sherpa-onnx export)
+
+PocketVoice may include the sherpa-onnx FireRedASR2-CTC export (ONNX int8 and
+the statically-quantized QDQ variant used by the ORT QNN EP backend).
+FireRedASR2S is Apache License 2.0:
+
+- licenses/FIREREDASR2S_LICENSE.txt

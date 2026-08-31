@@ -36,7 +36,9 @@ static bool isCpuFallbackBackend(const std::string& backendName) {
         || backendName == "paraformer"
         || backendName == "qwen3_asr_cpu"
         || backendName == "paraformer_xnnpack"
-        || backendName == "paraformer_cpu";
+        || backendName == "paraformer_cpu"
+        || backendName == "fire_red_asr2_ctc"
+        || backendName == "fire_red_asr2_ctc_qnn_cpu";  // QNN EP unavailable, ORT fell back to CPU
 }
 
 static void recognizeOneAudio(stt::SttEngine& engine, stt::NetworkServer& server, const stt::AudioData& audio) {

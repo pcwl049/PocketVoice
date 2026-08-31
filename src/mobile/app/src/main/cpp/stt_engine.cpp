@@ -1,6 +1,9 @@
 #include "stt_engine.h"
+#if STT_USE_QNN
+#include "firered_ctc_qnn_backend.h"
 #include "qwen3_qnn_backend.h"
 #include "qwen3_tokenizer.h"
+#endif
 #include "kaldi-native-fbank/csrc/online-feature.h"
 #include "sherpa-onnx/csrc/math.h"
 #include <cstdio>
@@ -37,6 +40,7 @@ namespace stt {
 
 namespace {
 
+#if STT_USE_QNN
 constexpr int kQwen3MelDim = 128;
 constexpr int kQwen3MaxNewTokens = 128;
 constexpr int kQwen3MaxTotalLen = 512;
@@ -115,6 +119,62 @@ static std::vector<float> extractQwen3WhisperFeatures(const float* samples, size
     if (outFrames) {
         *outFrames = numFrames;
     }
+    return features;
+}
+
+// FireRedASR2-CTC uses a standard 80-bin fbank (16 kHz, 25 ms / 10 ms),
+// FireRedASR2-CTC frontend: kaldi fbank (80 bins, 16 kHz, 25/10 ms, povey
+// window, low=20, high=0, snip_edges) computed on int16-range waveform
+// (x32768) and then per-dim CMVN from the model metadata (cmvn_mean /
+// cmvn_inv_stddev) — same as sherpa-onnx's OfflineFireRedAsrCtcModel.
+struct FireRedFbankOpts {
+    int32_t sample_rate = 16000;
+    int32_t num_mel_bins = 80;
+    float frame_length_ms = 25.0f;
+    float frame_shift_ms = 10.0f;
+    float low_freq = 20.0f;
+    float high_freq = 0.0f;
+    float dither = 0.0f;
+};
+
+static std::vector<float> extractFireRedFbank(const float* samples, size_t numSamples,
+                                              int* outFrames, const FireRedFbankOpts& o = {}) {
+    if (outFrames) *outFrames = 0;
+    if (!samples || numSamples == 0) return {};
+
+    knf::FbankOptions opts;
+    opts.frame_opts.samp_freq = o.sample_rate;
+    opts.frame_opts.frame_shift_ms = o.frame_shift_ms;
+    opts.frame_opts.frame_length_ms = o.frame_length_ms;
+    opts.frame_opts.dither = o.dither;
+    opts.frame_opts.preemph_coeff = 0.97f;
+    opts.frame_opts.remove_dc_offset = true;
+    opts.frame_opts.window_type = "povey";
+    opts.frame_opts.snip_edges = true;
+    opts.mel_opts.num_bins = o.num_mel_bins;
+    opts.mel_opts.low_freq = o.low_freq;
+    opts.mel_opts.high_freq = o.high_freq;
+
+    std::vector<float> scaled(numSamples);
+    for (size_t i = 0; i < numSamples; ++i) {
+        scaled[i] = samples[i] * 32768.0f;
+    }
+
+    knf::OnlineFbank fbank(opts);
+    fbank.AcceptWaveform(static_cast<float>(o.sample_rate), scaled.data(),
+                         static_cast<int32_t>(numSamples));
+    fbank.InputFinished();
+    const int numFrames = fbank.NumFramesReady();
+    if (numFrames < 1) return {};
+
+    std::vector<float> features(static_cast<size_t>(numFrames) * o.num_mel_bins, 0.0f);
+    float* dst = features.data();
+    for (int i = 0; i < numFrames; ++i) {
+        const float* frame = fbank.GetFrame(i);
+        std::copy(frame, frame + o.num_mel_bins, dst);
+        dst += o.num_mel_bins;
+    }
+    if (outFrames) *outFrames = numFrames;
     return features;
 }
 
@@ -372,6 +432,7 @@ static std::string generateQwen3Text(
          (localGenerated.size() >= static_cast<size_t>(kQwen3MaxNewTokens) ? "max_new_tokens" : "stop_token"));
     return text;
 }
+#endif
 
 }  // namespace
 
@@ -409,8 +470,11 @@ SenseVoiceMetadata parseSenseVoiceMetadata(const std::string& json) {
 struct SttEngine::Impl {
     const SherpaOnnxOnlineRecognizer* recognizer = nullptr;
     const SherpaOnnxOfflineRecognizer* offlineRecognizer = nullptr;
+#if STT_USE_QNN
     stt::Qwen3QnnBackend* qwen3QnnBackend = nullptr;
     stt::Qwen3Tokenizer* qwen3Tokenizer = nullptr;
+    stt::FireRedCtcQnnBackend* fireRedCtcQnn = nullptr;
+#endif
 };
 
 static bool fileExists(const std::string& path) {
@@ -523,12 +587,11 @@ SttEngine::~SttEngine() {
     if (m_impl->offlineRecognizer) {
         SherpaOnnxDestroyOfflineRecognizer(m_impl->offlineRecognizer);
     }
-    if (m_impl->qwen3QnnBackend) {
-        delete m_impl->qwen3QnnBackend;
-    }
-    if (m_impl->qwen3Tokenizer) {
-        delete m_impl->qwen3Tokenizer;
-    }
+#if STT_USE_QNN
+    delete m_impl->qwen3QnnBackend;
+    delete m_impl->qwen3Tokenizer;
+    delete m_impl->fireRedCtcQnn;
+#endif
     delete m_impl;
 }
 
@@ -615,9 +678,50 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     } else if (fileExists(paraformerOfflineModelFp32)) {
         paraformerOfflineModel = paraformerOfflineModelFp32;
     }
-    bool useParaformerXnnpack = !paraformerOfflineModel.empty() && fileExists(tokensPath);
+    // FireRedASR2-CTC packs ship the same model.int8.onnx / model.onnx names as
+    // Paraformer XNNPACK; the directory-name gate keeps them apart. Without it
+    // the paraformer branch would steal fire-red-asr2-ctc directories.
+    bool isFireRedDir = modelDir.find("fire-red-asr2-ctc") != std::string::npos;
+    bool isSenseVoiceDir = modelDir.find("sense-voice") != std::string::npos;
+    bool useSenseVoiceCpu = isSenseVoiceDir && !paraformerOfflineModel.empty() && fileExists(tokensPath);
+    bool useParaformerXnnpack = !isFireRedDir && !isSenseVoiceDir && !paraformerOfflineModel.empty() && fileExists(tokensPath);
+
+    // FireRedASR2-CTC: offline CTC model (encoder + CTC branch only, non-autoregressive).
+    // Detected by directory name + model.int8.onnx + tokens.txt. The directory-name gate
+    // disambiguates it from the Paraformer XNNPACK pack which ships the same file names.
+    std::string fireRedAsr2CtcModel = modelDir + "/model.int8.onnx";
+    bool useFireRedAsr2Ctc = modelDir.find("fire-red-asr2-ctc") != std::string::npos
+        && fileExists(fireRedAsr2CtcModel) && fileExists(tokensPath);
+
+    // FireRedASR2-CTC via ORT QNN EP: same model family but served by the
+    // QDQ uint8 model (model.onnx) through the ORT QNN Execution Provider.
+    // Uses the same directory; model.onnx takes priority over model.int8.onnx.
+    std::string fireRedQnnModel = modelDir + "/model.onnx";
+    bool useFireRedAsr2CtcQnn = modelDir.find("fire-red-asr2-ctc") != std::string::npos
+        && fileExists(fireRedQnnModel) && fileExists(tokensPath);
+
 
 #if STT_USE_QNN
+    if (useFireRedAsr2CtcQnn) {
+        m_backendType = BackendType::FireRedAsr2CtcQnn;
+        m_backendName = "fire_red_asr2_ctc_qnn";
+        LOGI("Selected backend: %s", m_backendName.c_str());
+        LOGI("FireRed QNN model: %s", fireRedQnnModel.c_str());
+
+        m_impl->fireRedCtcQnn = new stt::FireRedCtcQnnBackend();
+        if (!m_impl->fireRedCtcQnn->init(fireRedQnnModel, tokensPath, qnnLibDir, true)) {
+            LOGE("FireRed QNN init failed");
+            delete m_impl->fireRedCtcQnn;
+            m_impl->fireRedCtcQnn = nullptr;
+            return false;
+        }
+        // Adopt the effective backend name (qnn vs cpu fallback).
+        m_backendName = m_impl->fireRedCtcQnn->backendName();
+        m_initialized = true;
+        LOGI("Initialized OK, backend=%s", m_backendName.c_str());
+        return true;
+    }
+
     if (useSenseVoiceQnn) {
         m_backendType = BackendType::SenseVoiceQnn;
         m_backendName = "sensevoice_qnn";
@@ -666,9 +770,13 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         }
         config.model_config.sense_voice.language = "auto";
         config.model_config.sense_voice.use_itn = 1;
+#if defined(SHERPA_C_API_HAS_QNN_FIELDS)
+        // Only present in sherpa-onnx builds that expose the QAIRT context
+        // binary provider fields; the vendored v1.12.39 c-api does not.
         config.model_config.sense_voice.qnn_backend_lib = qnnBackendLib.c_str();
         config.model_config.sense_voice.qnn_context_binary = senseVoiceQnnPath.c_str();
         config.model_config.sense_voice.qnn_system_lib = qnnSystemLib.c_str();
+#endif
         config.model_config.tokens = tokensPath.c_str();
         config.model_config.num_threads = 1;
         config.model_config.provider = "qnn";
@@ -726,17 +834,24 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
             LOGI("QNN HTP vtcm_mb: %d", readQnnVtcmMb(modelDir));
         }
 
-        // Paraformer QNN: model field is comma-separated libencoder.so,libpredictor.so,libdecoder.so
-        std::string paraformerQnnModelPaths = paraformerQnnEncoderLib + "," + paraformerQnnPredictorLib + "," + paraformerQnnDecoderLib;
-
+        // Paraformer QNN: v1.13.x C-API uses separate encoder/decoder/predictor
+        // fields pointing at the QAIRT libmodel.so / context binaries. Without a
+        // context binary, sherpa inits from the model libs (InitFromModelLib).
         SherpaOnnxOfflineRecognizerConfig config;
         memset(&config, 0, sizeof(config));
         config.feat_config.sample_rate = 16000;
         config.feat_config.feature_dim = 80;
-        config.model_config.paraformer.model = paraformerQnnModelPaths.c_str();
+#if defined(SHERPA_C_API_HAS_QNN_FIELDS)
+        config.model_config.paraformer.encoder = paraformerQnnEncoderLib.c_str();
+        config.model_config.paraformer.predictor = paraformerQnnPredictorLib.c_str();
+        config.model_config.paraformer.decoder = paraformerQnnDecoderLib.c_str();
         config.model_config.paraformer.qnn_backend_lib = qnnBackendLib.c_str();
         config.model_config.paraformer.qnn_context_binary = "";
         config.model_config.paraformer.qnn_system_lib = "";
+#else
+        std::string paraformerQnnModelPaths = paraformerQnnEncoderLib + "," + paraformerQnnPredictorLib + "," + paraformerQnnDecoderLib;
+        config.model_config.paraformer.model = paraformerQnnModelPaths.c_str();
+#endif
         config.model_config.tokens = tokensPath.c_str();
         config.model_config.num_threads = 1;
         config.model_config.provider = "qnn";
@@ -744,7 +859,13 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         config.decoding_method = "greedy_search";
 
         LOGI("Selected backend: %s", m_backendName.c_str());
+#if defined(SHERPA_C_API_HAS_QNN_FIELDS)
+        LOGI("Paraformer QNN encoder: %s", paraformerQnnEncoderLib.c_str());
+        LOGI("Paraformer QNN predictor: %s", paraformerQnnPredictorLib.c_str());
+        LOGI("Paraformer QNN decoder: %s", paraformerQnnDecoderLib.c_str());
+#else
         LOGI("Paraformer QNN model paths: %s", paraformerQnnModelPaths.c_str());
+#endif
         LOGI("QNN backend lib: %s", qnnBackendLib.c_str());
         LOGI("QNN system lib: %s", qnnSystemLib.c_str());
         LOGI("Creating offline Paraformer QNN recognizer...");
@@ -762,6 +883,37 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         LOGI("SenseVoice QNN model present but APK was built without STT_USE_QNN");
     }
 #endif
+
+    if (useSenseVoiceCpu) {
+        m_backendType = BackendType::SenseVoiceQnn;  // reuse the enum slot; name differs below
+        m_backendName = "sensevoice_cpu";
+
+        const int cpuFallbackThreads = readCpuFallbackThreads(modelDir);
+
+        SherpaOnnxOfflineRecognizerConfig config;
+        memset(&config, 0, sizeof(config));
+        config.feat_config.sample_rate = 16000;
+        config.feat_config.feature_dim = 80;
+        config.model_config.sense_voice.model = paraformerOfflineModel.c_str();
+        config.model_config.sense_voice.language = "auto";
+        config.model_config.sense_voice.use_itn = 1;
+        config.model_config.tokens = tokensPath.c_str();
+        config.model_config.num_threads = cpuFallbackThreads;
+        config.model_config.provider = "cpu";
+        config.model_config.debug = 0;
+        config.decoding_method = "greedy_search";
+
+        LOGI("Selected backend: %s", m_backendName.c_str());
+        LOGI("SenseVoice CPU model: %s", paraformerOfflineModel.c_str());
+        m_impl->offlineRecognizer = SherpaOnnxCreateOfflineRecognizer(&config);
+        if (!m_impl->offlineRecognizer) {
+            LOGE("Failed to create SenseVoice CPU recognizer");
+            return false;
+        }
+        m_initialized = true;
+        LOGI("Initialized OK, backend=%s", m_backendName.c_str());
+        return true;
+    }
 
     if (useParaformerXnnpack) {
         m_backendType = BackendType::ParaformerXnnpack;
@@ -797,6 +949,37 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
             LOGI("Using CPU provider for Paraformer (XNNPACK not available)");
         } else {
             LOGI("Paraformer XNNPACK recognizer created successfully");
+        }
+        m_initialized = true;
+        LOGI("Initialized OK, backend=%s", m_backendName.c_str());
+        return true;
+    }
+
+    if (useFireRedAsr2Ctc) {
+        m_backendType = BackendType::FireRedAsr2Ctc;
+        m_backendName = "fire_red_asr2_ctc";
+
+        const int cpuFallbackThreads = readCpuFallbackThreads(modelDir);
+
+        SherpaOnnxOfflineRecognizerConfig config;
+        memset(&config, 0, sizeof(config));
+        config.feat_config.sample_rate = 16000;
+        config.feat_config.feature_dim = 80;
+        config.model_config.fire_red_asr_ctc.model = fireRedAsr2CtcModel.c_str();
+        config.model_config.tokens = tokensPath.c_str();
+        config.model_config.num_threads = cpuFallbackThreads;
+        config.model_config.provider = "cpu";
+        config.model_config.debug = 0;
+        config.decoding_method = "greedy_search";
+
+        LOGI("Selected backend: %s", m_backendName.c_str());
+        LOGI("FireRedASR2-CTC model: %s", fireRedAsr2CtcModel.c_str());
+        LOGI("CPU fallback threads: %d", cpuFallbackThreads);
+        LOGI("Creating offline FireRedASR2-CTC recognizer...");
+        m_impl->offlineRecognizer = SherpaOnnxCreateOfflineRecognizer(&config);
+        if (!m_impl->offlineRecognizer) {
+            LOGE("Failed to create offline FireRedASR2-CTC recognizer");
+            return false;
         }
         m_initialized = true;
         LOGI("Initialized OK, backend=%s", m_backendName.c_str());
@@ -1082,6 +1265,107 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         return result;
     }
 
+    #if STT_USE_QNN
+    if (m_backendType == BackendType::FireRedAsr2CtcQnn) {
+        if (!m_impl->fireRedCtcQnn) return result;
+
+        int frames = 0;
+        const auto featStart = std::chrono::steady_clock::now();
+        std::vector<float> feats = extractFireRedFbank(samples, numSamples, &frames);
+        const auto featEnd = std::chrono::steady_clock::now();
+        if (feats.empty() || frames < 1) {
+            LOGI("FireRed QNN: no fbank frames");
+            return result;
+        }
+        {
+            float fmin = feats[0], fmax = feats[0];
+            double fsum = 0.0;
+            for (float v : feats) {
+                if (v < fmin) fmin = v;
+                if (v > fmax) fmax = v;
+                fsum += v;
+            }
+            __android_log_print(ANDROID_LOG_INFO, "FireRedQnn",
+                "fbank stats: frames=%d min=%.3f max=%.3f mean=%.3f",
+                frames, fmin, fmax, fsum / feats.size());
+        }
+        // Per-dim CMVN from the model metadata (matches sherpa-onnx
+        // OfflineFireRedAsrCtcModel::NormalizeFeatures). The waveform was
+        // scaled to the int16 range before fbank, which is what the
+        // exported cmvn_mean/inv_stddev were computed on.
+        {
+            const float* mean = nullptr;
+            const float* inv = nullptr;
+            int dim = 0;
+            if (m_impl->fireRedCtcQnn->cmvn(&mean, &inv, &dim) && dim == 80) {
+                float* p = feats.data();
+                for (int i = 0; i < frames; ++i) {
+                    for (int k = 0; k < dim; ++k) {
+                        p[k] = (p[k] - mean[k]) * inv[k];
+                    }
+                    p += dim;
+                }
+            }
+        }
+        const long featMs = static_cast<long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(featEnd - featStart).count());
+
+        const auto decodeStart = std::chrono::steady_clock::now();
+        std::string text;
+        const bool ok = m_impl->fireRedCtcQnn->recognize(feats.data(), frames, &text);
+        const auto decodeEnd = std::chrono::steady_clock::now();
+        const long decodeMs = static_cast<long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(decodeEnd - decodeStart).count());
+
+        if (!ok) {
+            LOGE("FireRed QNN recognize failed");
+            return result;
+        }
+        result.success = true;
+        result.text = text;
+        const long audioMs = static_cast<long>(numSamples * 1000 / 16000);
+        LOGI("Result: \"%s\"", result.text.c_str());
+        LOGI("Decode time: %ld ms (feat %ld ms, qnn %d ms)", decodeMs, featMs,
+             m_impl->fireRedCtcQnn->lastDecodeMs());
+        __android_log_print(ANDROID_LOG_INFO, "STT_GATE_D4",
+            "backend=%s decode_ms=%ld feat_ms=%ld audio_ms=%ld qnn=%d",
+            m_backendName.c_str(), decodeMs, featMs, audioMs,
+            m_impl->fireRedCtcQnn->qnnActive() ? 1 : 0);
+        return result;
+    }
+#endif
+
+    if (m_backendType == BackendType::FireRedAsr2Ctc) {
+        if (!m_impl->offlineRecognizer) return result;
+
+        const SherpaOnnxOfflineStream* stream = SherpaOnnxCreateOfflineStream(m_impl->offlineRecognizer);
+        if (!stream) return result;
+
+        SherpaOnnxAcceptWaveformOffline(stream, 16000, samples, static_cast<int32_t>(numSamples));
+
+        const auto decodeStart = std::chrono::steady_clock::now();
+        SherpaOnnxDecodeOfflineStream(m_impl->offlineRecognizer, stream);
+        const auto decodeEnd = std::chrono::steady_clock::now();
+        const long decodeMs = static_cast<long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(decodeEnd - decodeStart).count());
+        const long audioMs = static_cast<long>(numSamples * 1000 / 16000);
+
+        const SherpaOnnxOfflineRecognizerResult* res = SherpaOnnxGetOfflineStreamResult(stream);
+        if (res) {
+            result.success = true;
+            if (res->text) result.text = res->text;
+            LOGI("Result: \"%s\"", result.text.c_str());
+            LOGI("Decode time: %ld ms", decodeMs);
+            __android_log_print(ANDROID_LOG_INFO, "STT_GATE_D3",
+                "backend=%s decode_ms=%ld audio_ms=%ld", m_backendName.c_str(), decodeMs, audioMs);
+            SherpaOnnxDestroyOfflineRecognizerResult(res);
+        } else {
+            LOGI("Result is null");
+        }
+        SherpaOnnxDestroyOfflineStream(stream);
+        return result;
+    }
+
     if (m_backendType == BackendType::Qwen3AsrCpu) {
         if (!m_impl->offlineRecognizer) return result;
 
@@ -1130,6 +1414,7 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         return result;
     }
 
+#if STT_USE_QNN
     if (m_backendType == BackendType::Qwen3AsrQnn) {
         if (!m_impl->qwen3QnnBackend || !m_impl->qwen3QnnBackend->isInitialized()) {
             LOGE("Qwen3 QNN backend not initialized");
@@ -1232,6 +1517,7 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         LOGI("Qwen3 QNN recognition completed");
         return result;
     }
+#endif
 
     if (!m_impl->recognizer) return result;
     

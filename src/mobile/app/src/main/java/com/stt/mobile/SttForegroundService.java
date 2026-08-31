@@ -34,6 +34,8 @@ public class SttForegroundService extends Service {
     private static final String POLICY_FAST = "fast";
     private static final String POLICY_MIXED = "mixed";
     private static final String POLICY_RESCUE = "rescue";
+    private static final String POLICY_FIRERED = "firered";
+    private static final String POLICY_FIRERED_QNN = "firered_qnn";
 
     private static volatile boolean running = false;
     private PowerManager.WakeLock wakeLock;
@@ -187,7 +189,24 @@ public class SttForegroundService extends Service {
         File paraformer = new File(root, "paraformer");
         File paraformerQnn = new File(root, "paraformer-qnn");
         File paraformerOffline = new File(root, "paraformer-offline");
+        File fireRedAsr2Ctc = new File(root, "fire-red-asr2-ctc");
+        File fireRedAsr2CtcQnn = new File(root, "fire-red-asr2-ctc-qnn");
         String policy = getBackendPolicy();
+
+        if (POLICY_FIRERED.equals(policy)
+                && new File(fireRedAsr2Ctc, "model.int8.onnx").exists()
+                && new File(fireRedAsr2Ctc, "tokens.txt").exists()) {
+            Log.i(TAG, "Using firered backend policy -> fire-red-asr2-ctc");
+            return fireRedAsr2Ctc.getAbsolutePath();
+        }
+
+        if (POLICY_FIRERED_QNN.equals(policy)
+                && new File(fireRedAsr2CtcQnn, "model.onnx").exists()
+                && new File(fireRedAsr2CtcQnn, "tokens.txt").exists()) {
+            Log.i(TAG, "Using firered_qnn backend policy -> fire-red-asr2-ctc-qnn (QDQ model.onnx, ORT QNN EP)");
+            return fireRedAsr2CtcQnn.getAbsolutePath();
+        }
+
 
         if (POLICY_STANDARD.equals(policy)
                 && (new File(sensevoice, "model.bin").exists()
@@ -230,6 +249,13 @@ public class SttForegroundService extends Service {
                 || new File(sensevoice, "libmodel.so").exists())
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();
+        }
+
+        // FireRedASR2-CTC (high-accuracy zh-en+20 dialects, single-pass CTC, CPU/QNN friendly)
+        if (new File(fireRedAsr2Ctc, "model.int8.onnx").exists()
+                && new File(fireRedAsr2Ctc, "tokens.txt").exists()) {
+            Log.i(TAG, "Found FireRedASR2-CTC model at: " + fireRedAsr2Ctc.getAbsolutePath());
+            return fireRedAsr2Ctc.getAbsolutePath();
         }
 
         // Paraformer QNN is the fast alternative (73ms decode, HTP)
@@ -282,7 +308,8 @@ public class SttForegroundService extends Service {
     private String getBackendPolicy() {
         String value = preferences().getString(PREF_BACKEND_POLICY, POLICY_AUTO);
         if (POLICY_STANDARD.equals(value) || POLICY_FAST.equals(value)
-                || POLICY_MIXED.equals(value) || POLICY_RESCUE.equals(value)) {
+                || POLICY_MIXED.equals(value) || POLICY_RESCUE.equals(value)
+                || POLICY_FIRERED.equals(value) || POLICY_FIRERED_QNN.equals(value)) {
             return value;
         }
         return POLICY_AUTO;

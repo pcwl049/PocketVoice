@@ -28,7 +28,9 @@ enum class BackendType {
     ParaformerQnn,
     Qwen3AsrCpu,
     Qwen3AsrQnn,       // Hybrid QNN Qwen3-ASR
-    ParaformerXnnpack  // ORT + XNNPACK offline Paraformer (model.onnx)
+    ParaformerXnnpack,  // ORT + XNNPACK offline Paraformer (model.onnx)
+    FireRedAsr2Ctc,     // Offline FireRedASR2-CTC (model.int8.onnx, single pass)
+    FireRedAsr2CtcQnn   // FireRedASR2-CTC via ORT QNN EP (HTP) on QDQ uint8 model
 };
 
 class SttEngine {

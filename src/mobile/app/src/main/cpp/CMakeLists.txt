@@ -10,6 +10,8 @@ set(SHERPA_ONNX_ANDROID_LIB_DIR "${SHERPA_ONNX_DIR}/lib/android/${ANDROID_ABI}")
 if(STT_USE_QNN)
     set(SHERPA_ONNX_ANDROID_LIB_DIR "${SHERPA_ONNX_DIR}/lib/android/${ANDROID_ABI}-qnn")
     add_compile_definitions(STT_USE_QNN=1)
+    # The QNN-enabled sherpa-onnx C-API exposes qnn_* fields.
+    add_compile_definitions(SHERPA_C_API_HAS_QNN_FIELDS=1)
 endif()
 
 include_directories(
@@ -20,6 +22,10 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/../../../../../../build/qnn-android/headers
     ${CMAKE_SOURCE_DIR}/../../../../../../build/qnn-android/_deps/eigen-src
     ${CMAKE_SOURCE_DIR}/../../../../../../build/qnn-android/_deps/json-src/include
+    # Linux fallbacks: use the sherpa-onnx-src CMake deps directly when
+    # build/qnn-android has not been prepared (Windows .bat flow creates it).
+    ${SHERPA_ONNX_DIR}/sherpa-onnx-src/build-android-arm64-v8a/_deps/eigen-src
+    ${SHERPA_ONNX_DIR}/sherpa-onnx-src/build-android-arm64-v8a/_deps/json-src/include
 )
 
 set(KALDI_NATIVE_FBANK_SRC_DIR "${SHERPA_ONNX_DIR}/sherpa-onnx-src/build-android-arm64-v8a/_deps/kaldi_native_fbank-src/kaldi-native-fbank")
@@ -46,8 +52,6 @@ add_library(stt_native SHARED
     audio_job_queue.h
     stt_engine.cpp
     stt_engine.h
-    qwen3_qnn_backend.cpp
-    qwen3_qnn_backend.h
     qwen3_tokenizer.cpp
     qwen3_tokenizer.h
     network.cpp
@@ -73,6 +77,15 @@ add_library(stt_native SHARED
     ${SHERPA_ONNX_DIR}/sherpa-onnx-src/sherpa-onnx/csrc/math.cc
     ${SHERPA_ONNX_DIR}/sherpa-onnx-src/sherpa-onnx/csrc/qwen-asr-tokenizer.cc
 )
+
+if(STT_USE_QNN)
+    target_sources(stt_native PRIVATE
+        qwen3_qnn_backend.cpp
+        qwen3_qnn_backend.h
+        firered_ctc_qnn_backend.cpp
+        firered_ctc_qnn_backend.h
+    )
+endif()
 
 # Optional QNN SDK headers for qwen3_qnn_backend.cpp local development.
 if(DEFINED ENV{QNN_SDK_ROOT} AND EXISTS "$ENV{QNN_SDK_ROOT}/include/QNN")

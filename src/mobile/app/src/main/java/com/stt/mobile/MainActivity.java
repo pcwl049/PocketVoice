@@ -48,6 +48,8 @@ public class MainActivity extends Activity {
     private static final String POLICY_FAST = "fast";
     private static final String POLICY_MIXED = "mixed";
     private static final String POLICY_RESCUE = "rescue";
+    private static final String POLICY_FIRERED = "firered";
+    private static final String POLICY_FIRERED_QNN = "firered_qnn";
 
     private final Handler handler = new Handler();
     private final Object logLock = new Object();
@@ -309,7 +311,24 @@ public class MainActivity extends Activity {
         File qwen3QnnTokenizer = new File(qwen3Qnn, "tokenizer");
         File paraformerQnn = new File(root, "paraformer-qnn");
         File paraformerOffline = new File(root, "paraformer-offline");
+        File fireRedAsr2Ctc = new File(root, "fire-red-asr2-ctc");
+        File fireRedAsr2CtcQnn = new File(root, "fire-red-asr2-ctc-qnn");
         String policy = getBackendPolicy();
+
+        if (POLICY_FIRERED.equals(policy)
+                && new File(fireRedAsr2Ctc, "model.int8.onnx").exists()
+                && new File(fireRedAsr2Ctc, "tokens.txt").exists()) {
+            Log.i(TAG, "Using firered backend policy -> fire-red-asr2-ctc");
+            return fireRedAsr2Ctc.getAbsolutePath();
+        }
+
+        if (POLICY_FIRERED_QNN.equals(policy)
+                && new File(fireRedAsr2CtcQnn, "model.onnx").exists()
+                && new File(fireRedAsr2CtcQnn, "tokens.txt").exists()) {
+            Log.i(TAG, "Using firered_qnn backend policy -> fire-red-asr2-ctc-qnn (QDQ model.onnx, ORT QNN EP)");
+            return fireRedAsr2CtcQnn.getAbsolutePath();
+        }
+
 
         if (POLICY_STANDARD.equals(policy)
                 && (new File(sensevoice, "model.bin").exists()
@@ -349,6 +368,13 @@ public class MainActivity extends Activity {
                 || new File(sensevoice, "libmodel.so").exists())
                 && new File(sensevoice, "tokens.txt").exists()) {
             return sensevoice.getAbsolutePath();
+        }
+
+        // FireRedASR2-CTC (high-accuracy zh-en+20 dialects, single-pass CTC, CPU/QNN friendly)
+        if (new File(fireRedAsr2Ctc, "model.int8.onnx").exists()
+                && new File(fireRedAsr2Ctc, "tokens.txt").exists()) {
+            Log.i(TAG, "Found FireRedASR2-CTC model at: " + fireRedAsr2Ctc.getAbsolutePath());
+            return fireRedAsr2Ctc.getAbsolutePath();
         }
 
         // Paraformer QNN is the fast alternative (73ms decode, HTP)
@@ -400,7 +426,8 @@ public class MainActivity extends Activity {
     private String getBackendPolicy() {
         String value = preferences().getString(PREF_BACKEND_POLICY, POLICY_AUTO);
         if (POLICY_STANDARD.equals(value) || POLICY_FAST.equals(value)
-                || POLICY_MIXED.equals(value) || POLICY_RESCUE.equals(value)) {
+                || POLICY_MIXED.equals(value) || POLICY_RESCUE.equals(value)
+                || POLICY_FIRERED.equals(value) || POLICY_FIRERED_QNN.equals(value)) {
             return value;
         }
         return POLICY_AUTO;
@@ -409,7 +436,8 @@ public class MainActivity extends Activity {
     private void setBackendPolicy(String policy) {
         String normalized = POLICY_AUTO;
         if (POLICY_STANDARD.equals(policy) || POLICY_FAST.equals(policy)
-                || POLICY_MIXED.equals(policy) || POLICY_RESCUE.equals(policy)) {
+                || POLICY_MIXED.equals(policy) || POLICY_RESCUE.equals(policy)
+                || POLICY_FIRERED.equals(policy) || POLICY_FIRERED_QNN.equals(policy)) {
             normalized = policy;
         }
         preferences().edit().putString(PREF_BACKEND_POLICY, normalized).apply();
@@ -619,6 +647,8 @@ public class MainActivity extends Activity {
                 fallbackBackend = "sensevoice_qnn";
             } else if (modelDir.contains("qwen3-asr-0.6b")) {
                 fallbackBackend = "qwen3_asr_cpu";
+            } else if (modelDir.contains("fire-red-asr2-ctc")) {
+                fallbackBackend = "fire_red_asr2_ctc";
             }
             json.put("backend", runtime.optString("backend", fallbackBackend));
             json.put("cpuFallback", runtime.optBoolean("cpuFallback", false));

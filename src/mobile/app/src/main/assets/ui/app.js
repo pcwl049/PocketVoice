@@ -134,6 +134,8 @@
     if (policy === "fast") return "极速";
     if (policy === "mixed") return "兼顾中英";
     if (policy === "rescue") return "兼容兜底";
+    if (policy === "firered") return "FireRed 精准";
+    if (policy === "firered_qnn") return "FireRed NPU";
     return "自动";
   }
 
@@ -142,6 +144,8 @@
     if (policy === "fast") return "优先使用低延迟后端。";
     if (policy === "mixed") return "优先使用中英混合场景表现更稳的后端。";
     if (policy === "rescue") return "优先使用兼容性更高的兜底路径。";
+    if (policy === "firered") return "优先使用 FireRedASR2-CTC：中文精度高、支持 20+ 方言、单次前向识别。";
+    if (policy === "firered_qnn") return "FireRedASR2-CTC 走 ORT QNN EP（NPU/HTP 加速），失败自动回退 CPU。";
     return "系统会按当前策略自动选择实际后端。";
   }
 
