@@ -279,7 +279,12 @@ bool FireRedQnnModelLibBackend::init(const std::string& modelDir,
         }
         std::string line;
         while (std::getline(tf, line)) {
-            if (!line.empty()) im.tokens.push_back(line);
+            if (line.empty()) continue;
+            // tokens.txt format: "<symbol> <id>" per line; keep the symbol only.
+            std::string sym = line;
+            size_t sp = line.find_first_of(" \t");
+            if (sp != std::string::npos) sym = line.substr(0, sp);
+            im.tokens.push_back(sym);
         }
         LOGI("tokens loaded: %zu entries", im.tokens.size());
     }
