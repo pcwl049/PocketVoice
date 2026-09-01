@@ -81,9 +81,14 @@ public class SttForegroundService extends Service {
         String runtimeDir = intent != null ? intent.getStringExtra(EXTRA_RUNTIME_DIR) : null;
         if (modelDir == null || modelDir.isEmpty()) {
             modelDir = resolveModelDir();
-            // When fallback resolve picks paraformer-qnn, .so files must be
-            // copied to internal storage (Android linker cannot dlopen from /sdcard)
-            if (modelDir.endsWith("paraformer-qnn")) {
+        }
+        // .so model-libs cannot be dlopened from /sdcard: always copy to
+        // internal storage regardless of whether modelDir came from the
+        // activity or from the fallback resolve below.
+        if (modelDir != null && !modelDir.isEmpty()) {
+            if (modelDir.contains("fire-red-asr2-ctc") || modelDir.contains("fire_red_qnn_ml")) {
+                modelDir = prepareFireRedQnnModelDir(modelDir);
+            } else if (modelDir.endsWith("paraformer-qnn")) {
                 modelDir = prepareParaformerQnnModelDir(modelDir);
             } else if (modelDir.endsWith("sensevoice")) {
                 // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
@@ -344,6 +349,37 @@ public class SttForegroundService extends Service {
                 copyFile(source, target);
             } catch (IOException e) {
                 Log.e(TAG, "Failed to copy SenseVoice QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
+    }
+
+    private String prepareFireRedQnnModelDir(String modelDir) {
+        File externalDir = new File(modelDir);
+        if (!new File(externalDir, "libmodel.so").exists()) {
+            return modelDir;
+        }
+        File internalDir = new File(getFilesDir(), "fire_red_qnn_ml");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            Log.e(TAG, "FireRed QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        String[] modelFiles = new String[] {
+                "libmodel.so",
+                "cmvn.txt",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy FireRed QNN model " + name, e);
             }
         }
         return internalDir.getAbsolutePath();

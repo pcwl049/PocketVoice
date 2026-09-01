@@ -1,6 +1,7 @@
 #include "stt_engine.h"
 #if STT_USE_QNN
 #include "firered_ctc_qnn_backend.h"
+#include "fire_red_qnn_model_lib_backend.h"
 #include "qwen3_qnn_backend.h"
 #include "qwen3_tokenizer.h"
 #endif
@@ -474,6 +475,7 @@ struct SttEngine::Impl {
     stt::Qwen3QnnBackend* qwen3QnnBackend = nullptr;
     stt::Qwen3Tokenizer* qwen3Tokenizer = nullptr;
     stt::FireRedCtcQnnBackend* fireRedCtcQnn = nullptr;
+    stt::FireRedQnnModelLibBackend* fireRedModelLib = nullptr;
 #endif
 };
 
@@ -613,6 +615,7 @@ SttEngine::~SttEngine() {
     delete m_impl->qwen3QnnBackend;
     delete m_impl->qwen3Tokenizer;
     delete m_impl->fireRedCtcQnn;
+    delete m_impl->fireRedModelLib;
 #endif
     delete m_impl;
 }
@@ -712,15 +715,19 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
     // Detected by directory name + model.int8.onnx + tokens.txt. The directory-name gate
     // disambiguates it from the Paraformer XNNPACK pack which ships the same file names.
     std::string fireRedAsr2CtcModel = modelDir + "/model.int8.onnx";
-    bool useFireRedAsr2Ctc = modelDir.find("fire-red-asr2-ctc") != std::string::npos
+    bool useFireRedAsr2Ctc = (modelDir.find("fire-red-asr2-ctc") != std::string::npos
+        || modelDir.find("fire_red_qnn_ml") != std::string::npos)
         && fileExists(fireRedAsr2CtcModel) && fileExists(tokensPath);
 
     // FireRedASR2-CTC via ORT QNN EP: same model family but served by the
     // QDQ uint8 model (model.onnx) through the ORT QNN Execution Provider.
     // Uses the same directory; model.onnx takes priority over model.int8.onnx.
     std::string fireRedQnnModel = modelDir + "/model.onnx";
-    bool useFireRedAsr2CtcQnn = modelDir.find("fire-red-asr2-ctc") != std::string::npos
-        && fileExists(fireRedQnnModel) && fileExists(tokensPath);
+    std::string fireRedModelLib = modelDir + "/libmodel.so";
+    bool useFireRedAsr2CtcQnn = (modelDir.find("fire-red-asr2-ctc") != std::string::npos
+        || modelDir.find("fire_red_qnn_ml") != std::string::npos)
+        && fileExists(tokensPath)
+        && (fileExists(fireRedQnnModel) || fileExists(fireRedModelLib));
 
 
 #if STT_USE_QNN
@@ -729,6 +736,28 @@ bool SttEngine::init(const std::string& modelDir, const std::string& qnnLibDir) 
         m_backendName = "fire_red_asr2_ctc_qnn";
         LOGI("Selected backend: %s", m_backendName.c_str());
         LOGI("FireRed QNN model: %s", fireRedQnnModel.c_str());
+
+        // Prefer the QNN model-lib (context binary) backend when present:
+        // it runs the staticized FireRed graph directly on HTP, bypassing the
+        // ORT QNN EP op validation (which cannot accept Slice/Gather/Reshape
+        // on int8 activations in the QAIRT 2.32 stack).
+        const std::string fireRedModelLib = modelDir + "/libmodel.so";
+        if (fileExists(fireRedModelLib)) {
+            LOGI("FireRed QNN model-lib found: %s", fireRedModelLib.c_str());
+            m_impl->fireRedModelLib = new stt::FireRedQnnModelLibBackend();
+            if (!m_impl->fireRedModelLib->init(modelDir, qnnLibDir)) {
+                LOGE("FireRed QNN model-lib init failed; falling back to ORT EP");
+                delete m_impl->fireRedModelLib;
+                m_impl->fireRedModelLib = nullptr;
+            } else {
+                m_backendName = m_impl->fireRedModelLib->backendName();
+                m_initialized = true;
+                LOGI("Initialized OK, backend=%s", m_backendName.c_str());
+                return true;
+            }
+        } else {
+            LOGI("FireRed QNN model-lib not present; using ORT QNN EP path");
+        }
 
         m_impl->fireRedCtcQnn = new stt::FireRedCtcQnnBackend();
         if (!m_impl->fireRedCtcQnn->init(fireRedQnnModel, tokensPath, qnnLibDir, true)) {
@@ -1297,7 +1326,20 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
 
     #if STT_USE_QNN
     if (m_backendType == BackendType::FireRedAsr2CtcQnn) {
-        if (!m_impl->fireRedCtcQnn) return result;
+        if (!m_impl->fireRedCtcQnn && !m_impl->fireRedModelLib) return result;
+
+        // CMVN source: prefer the ORT backend's metadata-based values; the
+        // model-lib backend falls back to cmvn.txt in the model dir.
+        const float* mean = nullptr;
+        const float* inv = nullptr;
+        int dim = 0;
+        if (m_impl->fireRedCtcQnn && m_impl->fireRedCtcQnn->cmvn(&mean, &inv, &dim)) {
+            // ok
+        } else if (m_impl->fireRedModelLib && m_impl->fireRedModelLib->cmvn(&mean, &inv, &dim)) {
+            // ok
+        } else {
+            mean = nullptr;
+        }
 
         int frames = 0;
         const auto featStart = std::chrono::steady_clock::now();
@@ -1323,18 +1365,13 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         // OfflineFireRedAsrCtcModel::NormalizeFeatures). The waveform was
         // scaled to the int16 range before fbank, which is what the
         // exported cmvn_mean/inv_stddev were computed on.
-        {
-            const float* mean = nullptr;
-            const float* inv = nullptr;
-            int dim = 0;
-            if (m_impl->fireRedCtcQnn->cmvn(&mean, &inv, &dim) && dim == 80) {
-                float* p = feats.data();
-                for (int i = 0; i < frames; ++i) {
-                    for (int k = 0; k < dim; ++k) {
-                        p[k] = (p[k] - mean[k]) * inv[k];
-                    }
-                    p += dim;
+        if (mean != nullptr && dim == 80) {
+            float* p = feats.data();
+            for (int i = 0; i < frames; ++i) {
+                for (int k = 0; k < dim; ++k) {
+                    p[k] = (p[k] - mean[k]) * inv[k];
                 }
+                p += dim;
             }
         }
         const long featMs = static_cast<long>(
@@ -1342,7 +1379,9 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
 
         const auto decodeStart = std::chrono::steady_clock::now();
         std::string text;
-        const bool ok = m_impl->fireRedCtcQnn->recognize(feats.data(), frames, &text);
+        const bool ok = m_impl->fireRedModelLib
+            ? m_impl->fireRedModelLib->recognize(feats.data(), frames, &text)
+            : m_impl->fireRedCtcQnn->recognize(feats.data(), frames, &text);
         const auto decodeEnd = std::chrono::steady_clock::now();
         const long decodeMs = static_cast<long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(decodeEnd - decodeStart).count());
@@ -1356,11 +1395,13 @@ RecognizeResult SttEngine::recognize(const float* samples, size_t numSamples) {
         const long audioMs = static_cast<long>(numSamples * 1000 / 16000);
         LOGI("Result: \"%s\"", result.text.c_str());
         LOGI("Decode time: %ld ms (feat %ld ms, qnn %d ms)", decodeMs, featMs,
-             m_impl->fireRedCtcQnn->lastDecodeMs());
+             m_impl->fireRedModelLib ? m_impl->fireRedModelLib->lastDecodeMs()
+                                     : m_impl->fireRedCtcQnn->lastDecodeMs());
         __android_log_print(ANDROID_LOG_INFO, "STT_GATE_D4",
             "backend=%s decode_ms=%ld feat_ms=%ld audio_ms=%ld qnn=%d",
             m_backendName.c_str(), decodeMs, featMs, audioMs,
-            m_impl->fireRedCtcQnn->qnnActive() ? 1 : 0);
+            m_impl->fireRedModelLib ? (m_impl->fireRedModelLib->qnnActive() ? 1 : 0)
+                                    : (m_impl->fireRedCtcQnn->qnnActive() ? 1 : 0));
         return result;
     }
 #endif

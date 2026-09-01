@@ -749,6 +749,43 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    private String prepareFireRedQnnModelDir() {
+        // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
+        if (!modelDir.contains("fire-red-asr2-ctc")) {
+            return modelDir;
+        }
+        File externalDir = new File(modelDir);
+        if (!new File(externalDir, "libmodel.so").exists()) {
+            return modelDir;
+        }
+        File internalDir = new File(getFilesDir(), "fire_red_qnn_ml");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            addLog("FireRed QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        String[] modelFiles = new String[] {
+                "libmodel.so",
+                "cmvn.txt",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+                addLog("FireRed QNN copied: " + name);
+            } catch (IOException e) {
+                addLog("FireRed QNN copy failed: " + name);
+                Log.e(TAG, "Failed to copy FireRed QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
+    }
+
     private void startServer() {
         modelDir = resolveModelDir();
         if (modelDir.endsWith("qwen3-asr-0.6b-qnn")) {
@@ -762,6 +799,10 @@ public class MainActivity extends Activity {
         } else if (modelDir.endsWith("sensevoice")) {
             // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
             modelDir = prepareSenseVoiceQnnModelDir();
+            qnnRuntimeDir = prepareQnnRuntimeDir();
+        } else if (modelDir.contains("fire-red-asr2-ctc")) {
+            // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
+            modelDir = prepareFireRedQnnModelDir();
             qnnRuntimeDir = prepareQnnRuntimeDir();
         } else {
             qnnRuntimeDir = prepareQnnRuntimeDir();

@@ -84,6 +84,8 @@ if(STT_USE_QNN)
         qwen3_qnn_backend.h
         firered_ctc_qnn_backend.cpp
         firered_ctc_qnn_backend.h
+        fire_red_qnn_model_lib_backend.cpp
+        fire_red_qnn_model_lib_backend.h
     )
 endif()
 
