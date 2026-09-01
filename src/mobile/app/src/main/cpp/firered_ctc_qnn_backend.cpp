@@ -105,11 +105,33 @@ struct TokenTable {
 
 }  // namespace
 
+// Shared between the ORT logging sink and init(): ORT's QNN EP silently falls
+// back to CPU when device/backend setup fails (GetCapability returns an empty
+// result instead of throwing), so we must watch the log for the failure marker.
+struct FireRedQnnEpStatus {
+    bool setupFailed = false;
+};
+
+// ORT logging sink: forwards warnings/errors to logcat and flags silent QNN
+// EP failures. GetAvailableProviders() only lists what the build was compiled
+// with, so it cannot tell whether HTP actually initialized.
+static void FireRedOrtLogSink(void* param, OrtLoggingLevel severity, const char* /*category*/,
+                              const char* /*logid*/, const char* /*code_location*/, const char* message) {
+    if (message == nullptr) return;
+    if (severity == ORT_LOGGING_LEVEL_ERROR || severity == ORT_LOGGING_LEVEL_WARNING) {
+        LOGI("ORT: %s", message);
+        if (param != nullptr && strstr(message, "QNN SetupBackend failed") != nullptr) {
+            static_cast<FireRedQnnEpStatus*>(param)->setupFailed = true;
+        }
+    }
+}
+
 struct FireRedCtcQnnBackend::Impl {
     Ort::Env env{nullptr};
     Ort::SessionOptions opts{nullptr};
     Ort::Session* session = nullptr;
     bool qnn = false;
+    FireRedQnnEpStatus epStatus;
     TokenTable tokens;
     std::vector<float> cmvnMean;
     std::vector<float> cmvnInv;
@@ -144,7 +166,7 @@ bool FireRedCtcQnnBackend::init(const std::string& modelPath,
     }
     LOGI("tokens loaded: %zu entries", im.tokens.id2sym.size());
 
-    im.env = Ort::Env{ORT_LOGGING_LEVEL_WARNING, "fire_red_ctc_qnn"};
+    im.env = Ort::Env{ORT_LOGGING_LEVEL_WARNING, "fire_red_ctc_qnn", &FireRedOrtLogSink, &im.epStatus};
     im.opts = Ort::SessionOptions{};
     im.opts.SetIntraOpNumThreads(2);
     im.opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -173,8 +195,10 @@ bool FireRedCtcQnnBackend::init(const std::string& modelPath,
         LOGI("CPU-only mode (no QNN EP)");
     }
 
+    bool qnnSessionOk = false;
     try {
         im.session = new Ort::Session(im.env, modelPath.c_str(), im.opts);
+        qnnSessionOk = true;
     } catch (const Ort::Exception& e) {
         if (useHtp) {
             // Retry without QNN — ephemeral device state must not block ASR.
@@ -184,7 +208,6 @@ bool FireRedCtcQnnBackend::init(const std::string& modelPath,
             im.opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
             try {
                 im.session = new Ort::Session(im.env, modelPath.c_str(), im.opts);
-                im.qnn = false;
             } catch (const Ort::Exception& e2) {
                 LOGE("CPU session also failed: %s", e2.what());
                 im.session = nullptr;
@@ -196,16 +219,21 @@ bool FireRedCtcQnnBackend::init(const std::string& modelPath,
         }
     }
 
-    im.qnn = useHtp && im.session != nullptr;
+    // HTP is only "in use" when the QNN session was created without a fallback
+    // AND the ORT log sink saw no "QNN SetupBackend failed" marker (the QNN EP
+    // silently falls back to CPU in that case). GetAvailableProviders() only
+    // reflects what the ORT build was compiled with and must not be used here.
+    im.qnn = useHtp && qnnSessionOk && !im.epStatus.setupFailed;
+    if (useHtp && !im.qnn) {
+        LOGE("HTP unavailable (qnnSessionOk=%d qnnSetupFailed=%d); running on CPU",
+             static_cast<int>(qnnSessionOk), static_cast<int>(im.epStatus.setupFailed));
+    }
     m_initialized = true;
-    // Inspect which providers are compiled into this ORT build.
+    // Diagnostic only: which EPs this ORT build was compiled with.
     try {
         auto ps = Ort::GetAvailableProviders();
         for (auto& p : ps) {
             LOGI("available provider: %s", p.c_str());
-            if (p.find("QNN") != std::string::npos) {
-                im.qnn = true;
-            }
         }
     } catch (...) {
     }
@@ -407,6 +435,7 @@ void FireRedCtcQnnBackend::release() {
         m_impl->opts = Ort::SessionOptions{nullptr};
         m_impl->qnn = false;
         m_impl->decodeMs = 0;
+        m_impl->epStatus.setupFailed = false;
     }
     m_initialized = false;
 }

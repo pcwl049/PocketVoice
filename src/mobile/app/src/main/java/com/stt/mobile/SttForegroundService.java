@@ -85,6 +85,9 @@ public class SttForegroundService extends Service {
             // copied to internal storage (Android linker cannot dlopen from /sdcard)
             if (modelDir.endsWith("paraformer-qnn")) {
                 modelDir = prepareParaformerQnnModelDir(modelDir);
+            } else if (modelDir.endsWith("sensevoice")) {
+                // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
+                modelDir = prepareSenseVoiceQnnModelDir(modelDir);
             }
         }
         if (runtimeDir == null || runtimeDir.isEmpty()) {
@@ -313,6 +316,37 @@ public class SttForegroundService extends Service {
             return value;
         }
         return POLICY_AUTO;
+    }
+
+    private String prepareSenseVoiceQnnModelDir(String modelDir) {
+        File externalDir = new File(modelDir);
+        if (!new File(externalDir, "libmodel.so").exists()) {
+            return modelDir;
+        }
+        File internalDir = new File(getFilesDir(), "sensevoice");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            Log.e(TAG, "SenseVoice QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        String[] modelFiles = new String[] {
+                "libmodel.so",
+                "model.bin",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy SenseVoice QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
     }
 
     private String prepareParaformerQnnModelDir(String modelDir) {

@@ -563,6 +563,47 @@ public class MainActivity extends Activity {
      * Android linker does not allow dlopen from /sdcard/.
      * @return Path to internal Paraformer QNN model directory, or original modelDir if not applicable
      */
+    /**
+     * Prepare SenseVoice QNN model directory.
+     * Copies libmodel.so from external storage to internal storage because
+     * Android linker does not allow dlopen from /sdcard/.
+     * @return Path to internal SenseVoice QNN model directory, or original modelDir if not applicable
+     */
+    private String prepareSenseVoiceQnnModelDir() {
+        if (!modelDir.endsWith("sensevoice")) {
+            return modelDir;
+        }
+        File externalDir = new File(modelDir);
+        if (!new File(externalDir, "libmodel.so").exists()) {
+            return modelDir;
+        }
+        File internalDir = new File(getFilesDir(), "sensevoice");
+        if (!internalDir.exists() && !internalDir.mkdirs()) {
+            addLog("SenseVoice QNN dir unavailable: " + internalDir.getAbsolutePath());
+            return modelDir;
+        }
+
+        String[] modelFiles = new String[] {
+                "libmodel.so",
+                "model.bin",
+                "tokens.txt"
+        };
+
+        for (String name : modelFiles) {
+            File source = new File(externalDir, name);
+            File target = new File(internalDir, name);
+            if (!source.exists()) continue;
+            if (target.exists() && target.length() == source.length()) continue;
+            try {
+                copyFile(source, target);
+            } catch (IOException e) {
+                addLog("SenseVoice QNN copy failed: " + name);
+                Log.e(TAG, "Failed to copy SenseVoice QNN model " + name, e);
+            }
+        }
+        return internalDir.getAbsolutePath();
+    }
+
     private String prepareParaformerQnnModelDir() {
         if (!modelDir.endsWith("paraformer-qnn")) {
             return modelDir;
@@ -717,6 +758,10 @@ public class MainActivity extends Activity {
             }
         } else if (modelDir.endsWith("paraformer-qnn")) {
             modelDir = prepareParaformerQnnModelDir();
+            qnnRuntimeDir = prepareQnnRuntimeDir();
+        } else if (modelDir.endsWith("sensevoice")) {
+            // libmodel.so cannot be dlopened from /sdcard; copy to internal storage.
+            modelDir = prepareSenseVoiceQnnModelDir();
             qnnRuntimeDir = prepareQnnRuntimeDir();
         } else {
             qnnRuntimeDir = prepareQnnRuntimeDir();
