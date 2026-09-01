@@ -38,6 +38,20 @@ struct QnnEpTuning {
     int rpcPollingTime = 0;      // us, 0 = unset
 };
 
+// Read per-model HTP soc/arch overrides (same files the sherpa path uses).
+static int readModelIntFile(const std::string& dir, const char* name, int def) {
+    std::ifstream is(dir + "/" + name);
+    if (!is.is_open()) return def;
+    int v = 0; is >> v;
+    return v > 0 ? v : def;
+}
+static std::string readModelArchFile(const std::string& dir, const std::string& def) {
+    std::ifstream is(dir + "/qnn_dsp_arch.txt");
+    if (!is.is_open()) return def;
+    std::string v; is >> v;
+    return v.empty() ? def : v;
+}
+
 static QnnEpTuning loadEpTuning(const std::string& modelPath) {
     QnnEpTuning tun;
     std::string dir = modelPath;
@@ -118,7 +132,8 @@ struct FireRedQnnEpStatus {
 static void FireRedOrtLogSink(void* param, OrtLoggingLevel severity, const char* /*category*/,
                               const char* /*logid*/, const char* /*code_location*/, const char* message) {
     if (message == nullptr) return;
-    if (severity == ORT_LOGGING_LEVEL_ERROR || severity == ORT_LOGGING_LEVEL_WARNING) {
+    if (severity == ORT_LOGGING_LEVEL_ERROR || severity == ORT_LOGGING_LEVEL_WARNING
+        || severity == ORT_LOGGING_LEVEL_INFO) {
         LOGI("ORT: %s", message);
         if (param != nullptr && strstr(message, "QNN SetupBackend failed") != nullptr) {
             static_cast<FireRedQnnEpStatus*>(param)->setupFailed = true;
@@ -188,6 +203,20 @@ bool FireRedCtcQnnBackend::init(const std::string& modelPath,
         if (tun.vtcmMb > 0) qnnOpts["vtcm_mb"] = std::to_string(tun.vtcmMb);
         if (tun.rpcControlLatency > 0) qnnOpts["rpc_control_latency"] = std::to_string(tun.rpcControlLatency);
         if (tun.rpcPollingTime > 0) qnnOpts["rpc_polling_time"] = std::to_string(tun.rpcPollingTime);
+        // SM8735: explicit soc_model + htp_arch are required by the QAIRT 2.32
+        // deviceCreate path (matching what the sherpa QNN backend passes).
+        // Read from the model dir overrides if present, else default to 85/v73.
+        {
+            std::string dir = modelPath;
+            size_t slash = dir.find_last_of("/\\");
+            if (slash != std::string::npos) dir = dir.substr(0, slash);
+            std::string dspArch = readModelArchFile(dir, "v73");
+            int socId = readModelIntFile(dir, "qnn_soc_id.txt", 85);
+            qnnOpts["soc_model"] = std::to_string(socId);
+            qnnOpts["htp_arch"] = dspArch.substr(1);  // "v73" -> "73"
+            LOGI("QNN EP soc_model=%s htp_arch=%s", qnnOpts["soc_model"].c_str(),
+                 qnnOpts["htp_arch"].c_str());
+        }
         im.opts.AppendExecutionProvider("QNN", qnnOpts);
         LOGI("QNN EP appended backend_path=%s mode=%s", backendPath.c_str(),
              qnnOpts["htp_performance_mode"].c_str());

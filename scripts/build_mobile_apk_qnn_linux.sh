@@ -80,6 +80,7 @@ cp "$NATIVE_BUILD_DIR/libstt_native.so" "$STAGE_DIR/lib/arm64-v8a/"
 cp "$QNN_LIB_DIR/libsherpa-onnx-c-api.so" "$STAGE_DIR/lib/arm64-v8a/"
 cp "$QNN_LIB_DIR/libonnxruntime.so" "$STAGE_DIR/lib/arm64-v8a/"
 cp "$QNN_LIB_DIR"/libQnnHtp*.so "$STAGE_DIR/lib/arm64-v8a/"
+cp "$QNN_LIB_DIR/libQnnSystem.so" "$STAGE_DIR/lib/arm64-v8a/"
 
 cp "$STAGE_DIR/resources.ap_" "$STAGE_DIR/app.apk"
 ( cd "$STAGE_DIR" && "$BT/aapt" add app.apk classes.dex >/dev/null )
@@ -87,6 +88,7 @@ cp "$STAGE_DIR/resources.ap_" "$STAGE_DIR/app.apk"
     lib/arm64-v8a/libsherpa-onnx-c-api.so \
     lib/arm64-v8a/libonnxruntime.so \
     $(cd "$STAGE_DIR" && ls lib/arm64-v8a/libQnnHtp*.so | tr '\n' ' ') \
+    lib/arm64-v8a/libQnnSystem.so \
     lib/arm64-v8a/libstt_native.so >/dev/null )
 if [ -f "$PROJECT_DIR/src/main/assets/ui/index.html" ]; then
     cp "$PROJECT_DIR/src/main/assets/ui/index.html" "$PROJECT_DIR/src/main/assets/ui/styles.css" "$PROJECT_DIR/src/main/assets/ui/app.js" "$STAGE_DIR/assets/ui/"
