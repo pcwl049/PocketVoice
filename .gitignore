@@ -50,3 +50,4 @@ stt-webview-preview-v0-desktop.png
 stt-webview-preview-v0-mobile.png
 
 # Keep large runtime payloads local. Scripts/docs describe how they are produced or pushed.
+.claude/
