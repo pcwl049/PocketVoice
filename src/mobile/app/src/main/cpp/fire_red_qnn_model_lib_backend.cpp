@@ -35,7 +35,7 @@
 namespace stt {
 
 namespace {
-constexpr int kStaticFrames = 1024;    // fixed time window
+constexpr int kStaticFrames = 1030;    // fixed time window
 constexpr int kFeatDim = 80;           // fbank dim
 constexpr int kOutFrames = 256;        // 1024/4 (4x downsampling)
 constexpr int kVocab = 8667;           // CTC vocab
@@ -234,6 +234,24 @@ struct FireRedQnnModelLibBackend::Impl {
                 auto* out = reinterpret_cast<uint16_t*>(dst);
                 std::fill(out, out + tensorCount, static_cast<uint16_t>(0));
                 for (size_t i = 0; i < copyCount; ++i) out[i] = floatToHalf(src[i]);
+                return;
+            }
+            case QNN_DATATYPE_UFIXED_POINT_8: {
+                auto* out = reinterpret_cast<uint8_t*>(dst);
+                const auto& params = tensorQuantParams(tensor);
+                const float scale = params.encodingDefinition == QNN_DEFINITION_DEFINED &&
+                            params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET
+                        ? params.scaleOffsetEncoding.scale
+                        : 1.0f;
+                const int32_t offset = params.encodingDefinition == QNN_DEFINITION_DEFINED &&
+                            params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET
+                        ? params.scaleOffsetEncoding.offset
+                        : 0;
+                std::fill(out, out + tensorCount, static_cast<uint8_t>(0));
+                for (size_t i = 0; i < copyCount; ++i) {
+                    float q = src[i] / scale - offset;
+                    out[i] = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, q)));
+                }
                 return;
             }
             case QNN_DATATYPE_UFIXED_POINT_16: {
@@ -497,16 +515,12 @@ bool FireRedQnnModelLibBackend::recognize(const float* fbank, int frames,
         const int realT = frames;
         const int padT = std::min(realT, static_cast<int>(kStaticFrames));
 
-        // x tensor layout is {1, 80, 1024} = CHANNEL-FIRST (F frames-last),
-        // i.e. fbank stored as [feature=80][time=1024]. Input fbank comes
-        // in as [time=T][feature=80]; transpose to feature-major before write.
+        // x tensor layout is {1, 1030, 80} = TIME-FIRST (NTF, as exported by the
+        // QAIRT converter with --input_layout x NTF). Input fbank comes in as
+        // [time=T][feature=80]; feed it directly (column-addressable, no
+        // transpose needed). Audio longer than 1030 frames is truncated.
         std::vector<float> xBuf(static_cast<size_t>(kStaticFrames) * kFeatDim, 0.0f);
-        for (int t = 0; t < padT; ++t) {
-            const float* src = fbank + static_cast<size_t>(t) * kFeatDim;
-            for (int f = 0; f < kFeatDim; ++f) {
-                xBuf[static_cast<size_t>(f) * kStaticFrames + t] = src[f];
-            }
-        }
+        std::memcpy(xBuf.data(), fbank, static_cast<size_t>(padT) * kFeatDim * sizeof(float));
         if (realT > kStaticFrames) {
             LOGE("audio %d frames exceeds static window %d, truncating tail",
                  realT, kStaticFrames);
